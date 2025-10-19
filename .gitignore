@@ -1,6 +1,6 @@
 .vscode/
 
-# Meshtastic chat monitor data
+# Meshtastic TUI data
 meshtastic_nodes.json
 
 # Byte-compiled / optimized / DLL files
