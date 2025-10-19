@@ -287,7 +287,8 @@ class ChatMonitor(App):
                 None,
                 lambda: self.iface.sendText(message, destinationId=dest, wantAck=False),
             )
-            self.log_system(f"Sent message to {dest}")
+            # Log the sent message in the stream as if it was a regular message
+            self.log_message(self.my_node_id or "You", dest, message)
         except Exception as e:
             self.log_system(f"Failed to send: {e}", error=True)
 
