@@ -215,7 +215,7 @@ class QuitConfirmScreen(ModalScreen):
 class ChatMonitor(App):
     """A Textual app for monitoring Meshtastic messages."""
 
-    TITLE = "Richs Meshtastic Monitor"
+    TITLE = "Meshtastic Monitor"
     SUB_TITLE = "Nodes: 0"
     CSS = APP_CSS
 
