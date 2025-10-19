@@ -5,7 +5,9 @@ A terminal UI for monitoring messages and sending replies.
 Press 's' to send a message, Ctrl+Q to quit.
 """
 import asyncio
+import json
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 import meshtastic
 import meshtastic.serial_interface
@@ -20,6 +22,7 @@ from textual import on
 # ====== CONFIG ======
 SERIAL_PORT = None  # set explicitly if needed, e.g. "/dev/ttyUSB0"
 MAX_MESSAGES = 50
+NODES_FILE = Path("meshtastic_nodes.json")
 # ====================
 
 
@@ -27,6 +30,7 @@ class ChatMonitor(App):
     """A Textual app for monitoring Meshtastic messages."""
 
     TITLE = "Richs Meshtastic Monitor"
+    SUB_TITLE = "Nodes: 0"
 
     CSS = """
     Screen {
@@ -65,6 +69,11 @@ class ChatMonitor(App):
         color: $success;
         text-style: bold;
     }
+    
+    .node-discovery {
+        color: $accent;
+        text-style: italic;
+    }
     """
 
     BINDINGS = [
@@ -74,6 +83,7 @@ class ChatMonitor(App):
 
     messages: reactive[list] = reactive(list)
     input_mode: reactive[bool] = reactive(False)
+    node_count: reactive[int] = reactive(0)
 
     def __init__(self):
         super().__init__()
@@ -82,6 +92,8 @@ class ChatMonitor(App):
         self.dest_input = None
         self.message_input = None
         self.current_input_step = None  # 'dest' or 'message'
+        self.known_nodes = {}  # Track nodes we've seen: {node_id: {name, last_seen}}
+        self.load_known_nodes()
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
@@ -92,6 +104,10 @@ class ChatMonitor(App):
             yield Input(placeholder="", id="user-input")
         yield Footer()
 
+    def watch_node_count(self, node_count: int) -> None:
+        """Update subtitle when node count changes."""
+        self.sub_title = f"Nodes: {node_count}"
+
     def on_mount(self) -> None:
         """Set up the app when mounted."""
         # Set up the table
@@ -100,8 +116,59 @@ class ChatMonitor(App):
         table.zebra_stripes = True
         table.add_columns("Time", "From", "To", "Message")
 
+        # Set initial node count (now that widgets are mounted)
+        self.node_count = len(self.known_nodes)
+
         # Connect to device in the background
         self.run_worker(self.connect_device(), exclusive=True)
+
+    def load_known_nodes(self) -> None:
+        """Load previously seen nodes from JSON file."""
+        try:
+            if NODES_FILE.exists():
+                with open(NODES_FILE, "r") as f:
+                    self.known_nodes = json.load(f)
+        except Exception as e:
+            # If we can't load, start with empty dict
+            self.known_nodes = {}
+
+    def save_known_nodes(self) -> None:
+        """Save known nodes to JSON file."""
+        try:
+            with open(NODES_FILE, "w") as f:
+                json.dump(self.known_nodes, f, indent=2)
+        except Exception as e:
+            # Log error but don't crash
+            pass
+
+    def register_node(self, node_id: str, node_name: str = None) -> bool:
+        """
+        Register a node and return True if it's newly discovered.
+
+        Args:
+            node_id: The node ID (e.g., "!9e9f4220")
+            node_name: Optional friendly name for the node
+
+        Returns:
+            True if this is a newly discovered node, False if already known
+        """
+        is_new = node_id not in self.known_nodes
+
+        self.known_nodes[node_id] = {
+            "name": node_name or node_id,
+            "last_seen": datetime.now().isoformat(),
+            "first_seen": self.known_nodes.get(node_id, {}).get(
+                "first_seen", datetime.now().isoformat()
+            ),
+        }
+
+        # Save to disk
+        self.save_known_nodes()
+
+        # Update node count
+        self.node_count = len(self.known_nodes)
+
+        return is_new
 
     async def connect_device(self) -> None:
         """Connect to Meshtastic device."""
@@ -130,6 +197,43 @@ class ChatMonitor(App):
             # Get node info
             info = await loop.run_in_executor(None, self.iface.getMyNodeInfo)
             self.log_system(f"Ready: {info['user']['longName']}")
+
+            # Register our own node
+            self.register_node(self.my_node_id, info["user"].get("longName"))
+
+            # Print initial node count
+            initial_count = len(self.known_nodes)
+            self.log_system(
+                f"Tracking {initial_count} node{'s' if initial_count != 1 else ''}"
+            )
+
+            # Load existing nodes from the device's node database
+            try:
+                if hasattr(self.iface, "nodes") and self.iface.nodes:
+                    node_count = 0
+                    for node_id, node_info in self.iface.nodes.items():
+                        if node_id != self.my_node_id:  # Skip our own node
+                            user_info = node_info.get("user", {})
+                            node_name = (
+                                user_info.get("longName")
+                                or user_info.get("shortName")
+                                or node_id
+                            )
+                            # Register without triggering discovery event
+                            if node_id not in self.known_nodes:
+                                self.known_nodes[node_id] = {
+                                    "name": node_name,
+                                    "last_seen": datetime.now().isoformat(),
+                                    "first_seen": datetime.now().isoformat(),
+                                }
+                                node_count += 1
+                    if node_count > 0:
+                        self.save_known_nodes()
+                        self.node_count = len(self.known_nodes)
+                        self.log_system(f"Loaded {node_count} known nodes from device")
+            except Exception as e:
+                # Don't fail if we can't load nodes
+                pass
 
             # Log radio configuration
             try:
@@ -219,15 +323,35 @@ class ChatMonitor(App):
         decoded = packet.get("decoded", {})
         portnum = decoded.get("portnum", "unknown")
 
+        # Check for new nodes from any packet type
+        from_id = packet.get("fromId", packet.get("from"))
+        if from_id and from_id != self.my_node_id:
+            # Try to get node name from the interface's node database
+            node_name = None
+            if hasattr(self.iface, "nodes") and from_id in self.iface.nodes:
+                user_info = self.iface.nodes[from_id].get("user", {})
+                node_name = user_info.get("longName") or user_info.get("shortName")
+
+            # Register and check if new
+            is_new = self.register_node(from_id, node_name)
+            if is_new:
+                display_name = node_name or from_id
+                self.log_node_discovery(from_id, display_name)
+
         # Skip non-text message types
         ignored_types = [
             "POSITION_APP",
             "TELEMETRY_APP",
             "ROUTING_APP",
-            "NODEINFO_APP",
             "ADMIN_APP",
             "unknown",
         ]
+
+        # Handle NODEINFO_APP specially - it means we learned about a node
+        if portnum == "NODEINFO_APP":
+            # We already handled this above, just return
+            return
+
         if portnum in ignored_types:
             return
 
@@ -282,6 +406,20 @@ class ChatMonitor(App):
         style_class = "error-message" if error else "system-message"
 
         table.add_row(timestamp, "[SYSTEM]", "", message)
+
+        # Keep only last MAX_MESSAGES
+        if table.row_count > MAX_MESSAGES:
+            table.remove_row(table.rows[0].key)
+
+        # Scroll to bottom
+        table.scroll_end(animate=False)
+
+    def log_node_discovery(self, node_id: str, node_name: str):
+        """Add a node discovery event to the table."""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        table = self.query_one("#messages-table", DataTable)
+
+        table.add_row(timestamp, "[NODE]", node_id, f"Discovered: {node_name}")
 
         # Keep only last MAX_MESSAGES
         if table.row_count > MAX_MESSAGES:
