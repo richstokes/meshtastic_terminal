@@ -2,6 +2,8 @@
 
 A collection of scripts for playing with Meshtastic devices. These scripts allow you to monitor chat messages, broadcast messages with acknowledgment tracking, and interact with Meshtastic mesh networks.
 
+![Meshtastic TUI Screenshot](images/screenshot1.png)
+
 ## Scripts
 
 ### 1. Meshtastic TUI (`meshtastic_tui.py`)
