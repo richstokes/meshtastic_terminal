@@ -34,7 +34,7 @@ with open(CSS_FILE, "r") as f:
 
 # ====== CONFIG ======
 SERIAL_PORT = None  # set explicitly if needed, e.g. "/dev/ttyUSB0"
-MAX_MESSAGES = 50
+MAX_MESSAGES = 500
 NODES_FILE = Path("meshtastic_nodes.json")
 # ====================
 
