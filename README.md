@@ -1,11 +1,11 @@
 # Meshtastic Scripts
 
-A collection of utility scripts for working with Meshtastic devices. These scripts allow you to monitor chat messages, broadcast messages with acknowledgment tracking, and interact with Meshtastic mesh networks.
+A collection of scripts for playing with Meshtastic devices. These scripts allow you to monitor chat messages, broadcast messages with acknowledgment tracking, and interact with Meshtastic mesh networks.
 
 ## Scripts
 
 ### 1. Meshtastic TUI (`meshtastic_tui.py`)
-A modern terminal UI for monitoring Meshtastic messages in real-time with the ability to send replies.
+A modern terminal UI for monitoring Meshtastic messages in real-time with the ability to send messages.
 
 **Features:**
 - Real-time message display with timestamps
@@ -17,6 +17,8 @@ A modern terminal UI for monitoring Meshtastic messages in real-time with the ab
 - Press Ctrl+Q to quit
 - Press ESC to cancel message input
 - Automatic message history with configurable limits
+- Ability to switch radio presets/modes on the fly
+- Theme support via CSS
 
 ### 2. Broadcast Until Acked (`broadcast_until_acked.py`)
 Sends messages to Meshtastic nodes and monitors for acknowledgments. Runs in a loop until an acknowledgment is received. Use sparingly to avoid flooding the network.
