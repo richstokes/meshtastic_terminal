@@ -181,13 +181,20 @@ def update_display():
         live_display.update(panel, refresh=True)
 
 
-def send_message():
+def send_message(old_settings):
     """Prompt user to send a message"""
+    import sys
+    import termios
+
     global input_mode
     input_mode = True
 
     if live_display:
         live_display.stop()
+
+    # Restore normal terminal settings for input
+    fd = sys.stdin.fileno()
+    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
     console.print("\n[bold cyan]Send Message[/bold cyan]")
 
@@ -206,6 +213,18 @@ def send_message():
             log_system(f"Failed to send: {e}", error=True)
 
     input_mode = False
+
+    # Restart the live display
+    if live_display:
+        rebuild_table()
+        panel = Panel(
+            current_table,
+            title="[bold blue]Meshtastic Chat Monitor[/bold blue]",
+            subtitle="[dim]Press 's' to send message, 'q' to quit[/dim]",
+            border_style="blue",
+        )
+        live_display.start()
+        live_display.update(panel, refresh=True)
 
 
 def input_thread():
@@ -231,7 +250,9 @@ def input_thread():
                 console.print("\n[green]Goodbye![/green]")
                 sys.exit(0)
             elif ch == "s" and not input_mode:
-                send_message()
+                send_message(old_settings)
+                # Re-enter raw mode after sending message
+                tty.setraw(sys.stdin.fileno())
 
             time.sleep(0.1)
     finally:
