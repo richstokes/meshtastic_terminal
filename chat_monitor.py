@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Meshtastic Chat Monitor
-A nice terminal UI for monitoring messages and sending replies.
+A terminal UI for monitoring messages and sending replies.
 Press 's' to send a message, 'q' to quit.
 """
 import time
@@ -17,6 +17,15 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 import threading
+import tty
+import termios
+import select
+
+# Terminal/shared state
+stdin_fd = None
+original_term_settings = None
+request_input_event = threading.Event()
+shutdown_event = threading.Event()
 
 # ====== CONFIG ======
 SERIAL_PORT = None  # set explicitly if needed, e.g. "/dev/ttyUSB0"
@@ -42,7 +51,7 @@ def on_connection(interface, topic=pub.AUTO_TOPIC):
         log_system(f"Connection warning: {e}")
 
 
-def on_disconnect(topic=pub.AUTO_TOPIC):
+def on_disconnect(interface=None, topic=pub.AUTO_TOPIC):
     log_system("Disconnected from device", error=True)
 
 
@@ -181,86 +190,160 @@ def update_display():
         live_display.update(panel, refresh=True)
 
 
-def send_message(old_settings):
-    """Prompt user to send a message"""
-    import sys
-    import termios
+def _read_line_raw(prompt_text: str, default: str | None = None) -> str:
+    """Read a line in raw mode with basic editing and ESC/Ctrl+C cancel.
 
+    Returns the entered string. If empty and default is provided, returns default.
+    Raises KeyboardInterrupt on ESC or Ctrl+C to signal cancel.
+    """
+    # Show prompt
+    if default is not None and default != "":
+        prompt_full = f"{prompt_text} [{default}]: "
+    else:
+        prompt_full = f"{prompt_text}: "
+
+    sys.stdout.write(prompt_full)
+    sys.stdout.flush()
+
+    buf = []
+    while True:
+        # Use select to avoid blocking forever in edge cases
+        r, _, _ = select.select([sys.stdin], [], [], 0.1)
+        if not r:
+            # allow cooperative multitasking
+            if shutdown_event.is_set():
+                raise KeyboardInterrupt
+            continue
+        ch = sys.stdin.read(1)
+        if not ch:
+            continue
+        code = ch
+
+        # Enter / Return
+        if code in ("\r", "\n"):
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            s = "".join(buf)
+            if not s and default is not None:
+                return default
+            return s
+        # ESC cancels
+        if code == "\x1b":
+            # print a newline and raise cancel
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            raise KeyboardInterrupt
+        # Ctrl+C cancels
+        if code == "\x03":
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            raise KeyboardInterrupt
+        # Backspace/Delete
+        if code in ("\x7f", "\b"):
+            if buf:
+                buf.pop()
+                # erase last char on terminal
+                sys.stdout.write("\b \b")
+                sys.stdout.flush()
+            continue
+        # Printable characters
+        if " " <= code <= "~":
+            buf.append(code)
+            sys.stdout.write(code)
+            sys.stdout.flush()
+            continue
+        # ignore others
+
+
+def send_message_prompt():
+    """Prompt user to send a message (runs in main thread)."""
     global input_mode
-    input_mode = True
 
+    input_mode = True
+    # Pause live updates; keep raw mode and pause input thread via input_mode flag
     if live_display:
         live_display.stop()
 
-    # Restore normal terminal settings for input
-    fd = sys.stdin.fileno()
-    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    try:
+        console.print("\n[bold cyan]Send Message[/bold cyan]")
 
-    console.print("\n[bold cyan]Send Message[/bold cyan]")
+        # Destination (supports default)
+        dest = _read_line_raw("Destination", default="^all")
 
-    # Get destination
-    dest = Prompt.ask("Destination", default="^all", show_default=True)
+        # Message
+        message = _read_line_raw("Message")
 
-    # Get message
-    message = Prompt.ask("Message")
-
-    if message:
-        try:
-            console.print(f"[yellow]Sending to {dest}...[/yellow]")
-            iface.sendText(message, destinationId=dest, wantAck=False)
-            log_system(f"Sent message to {dest}")
-        except Exception as e:
-            log_system(f"Failed to send: {e}", error=True)
-
-    input_mode = False
-
-    # Restart the live display
-    if live_display:
-        rebuild_table()
-        panel = Panel(
-            current_table,
-            title="[bold blue]Meshtastic Chat Monitor[/bold blue]",
-            subtitle="[dim]Press 's' to send message, 'q' to quit[/dim]",
-            border_style="blue",
-        )
-        live_display.start()
-        live_display.update(panel, refresh=True)
+        if message:
+            try:
+                console.print(f"[yellow]Sending to {dest}...[/yellow]")
+                iface.sendText(message, destinationId=dest, wantAck=False)
+                log_system(f"Sent message to {dest}")
+            except Exception as e:
+                log_system(f"Failed to send: {e}", error=True)
+        else:
+            log_system("Message cancelled")
+    except KeyboardInterrupt:
+        # Ctrl+C during input: cancel and resume live view
+        log_system("Message input cancelled")
+    finally:
+        input_mode = False
+        # Rebuild and resume live display, then return to raw mode for key handling
+        if live_display:
+            rebuild_table()
+            panel = Panel(
+                current_table,
+                title="[bold blue]Meshtastic Chat Monitor[/bold blue]",
+                subtitle="[dim]Press 's' to send message, 'q' to quit[/dim]",
+                border_style="blue",
+            )
+            live_display.start()
+            live_display.update(panel, refresh=True)
+        # Ensure raw mode is active for background key reader
+        if stdin_fd is not None:
+            try:
+                tty.setraw(stdin_fd)
+            except Exception:
+                pass
 
 
 def input_thread():
-    """Thread to handle keyboard input"""
-    import sys
-    import tty
-    import termios
-
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-
+    """Thread to handle single-key commands ('s' to send, 'q' to quit)."""
     try:
-        tty.setraw(sys.stdin.fileno())
+        if stdin_fd is not None:
+            tty.setraw(stdin_fd)
         while True:
+            if shutdown_event.is_set():
+                break
+            # Do not consume stdin while in input mode
+            if input_mode:
+                time.sleep(0.05)
+                continue
+
+            # Poll for key press without blocking indefinitely
+            r, _, _ = select.select([sys.stdin], [], [], 0.1)
+            if not r:
+                continue
             ch = sys.stdin.read(1)
 
             if ch == "q":
                 log_system("Shutting down...")
-                if live_display:
-                    live_display.stop()
-                if iface:
-                    iface.close()
-                console.print("\n[green]Goodbye![/green]")
-                sys.exit(0)
-            elif ch == "s" and not input_mode:
-                send_message(old_settings)
-                # Re-enter raw mode after sending message
-                tty.setraw(sys.stdin.fileno())
+                shutdown_event.set()
+                break
+            elif ch == "s":
+                request_input_event.set()
+            # ESC in live mode: no-op, reserved for cancel within prompt
 
-            time.sleep(0.1)
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    except Exception as e:
+        log_system(f"Input thread error: {e}", error=True)
 
 
 def main():
     global iface, live_display, current_table
+
+    # Prepare terminal settings
+    global stdin_fd, original_term_settings
+    stdin_fd = sys.stdin.fileno()
+    original_term_settings = termios.tcgetattr(stdin_fd)
 
     # Show initialization screen
     console.print(
@@ -320,14 +403,29 @@ def main():
     try:
         with Live(initial_panel, auto_refresh=False, console=console) as live:
             live_display = live
-            # Just sleep - updates happen via update_display() when messages arrive
             while True:
-                time.sleep(1)
+                # Handle queued actions from input thread
+                if shutdown_event.is_set():
+                    break
+                if request_input_event.is_set():
+                    request_input_event.clear()
+                    send_message_prompt()
+                time.sleep(0.1)
     except KeyboardInterrupt:
+        # If Ctrl+C somehow reaches here (e.g., outside raw mode), treat as shutdown
         console.print("\n[yellow]Interrupted by user[/yellow]")
     finally:
+        # Restore terminal mode
+        if stdin_fd is not None and original_term_settings is not None:
+            try:
+                termios.tcsetattr(stdin_fd, termios.TCSADRAIN, original_term_settings)
+            except Exception:
+                pass
         if iface:
-            iface.close()
+            try:
+                iface.close()
+            except Exception:
+                pass
         console.print("[green]Disconnected. Goodbye![/green]")
 
 
