@@ -26,6 +26,8 @@ MAX_MESSAGES = 50
 class ChatMonitor(App):
     """A Textual app for monitoring Meshtastic messages."""
 
+    TITLE = "Richs Meshtastic Monitor"
+
     CSS = """
     Screen {
         background: $background;
@@ -128,6 +130,67 @@ class ChatMonitor(App):
             # Get node info
             info = await loop.run_in_executor(None, self.iface.getMyNodeInfo)
             self.log_system(f"Ready: {info['user']['longName']}")
+
+            # Log radio configuration
+            try:
+                # Get the modem preset/config
+                if hasattr(self.iface, "localNode") and self.iface.localNode:
+                    local_config = self.iface.localNode.localConfig
+                    if local_config and hasattr(local_config, "lora"):
+                        lora_config = local_config.lora
+                        if hasattr(lora_config, "modem_preset"):
+                            preset_value = lora_config.modem_preset
+                            # Map numeric preset to friendly name
+                            preset_names = {
+                                0: "LONG_FAST",
+                                1: "LONG_SLOW",
+                                2: "VERY_LONG_SLOW",
+                                3: "MEDIUM_SLOW",
+                                4: "MEDIUM_FAST",
+                                5: "SHORT_SLOW",
+                                6: "SHORT_FAST",
+                                7: "LONG_MODERATE",
+                            }
+                            # Try to get name attribute first, otherwise use mapping
+                            if hasattr(preset_value, "name"):
+                                preset_name = preset_value.name
+                            else:
+                                preset_name = preset_names.get(preset_value, f"Unknown ({preset_value})")
+                            self.log_system(f"Radio preset: {preset_name}")
+
+                        # Also log region if available
+                        if hasattr(lora_config, "region"):
+                            region_value = lora_config.region
+                            # Map numeric region to friendly name
+                            region_names = {
+                                0: "UNSET",
+                                1: "US",
+                                2: "EU_433",
+                                3: "EU_868",
+                                4: "CN",
+                                5: "JP",
+                                6: "ANZ",
+                                7: "KR",
+                                8: "TW",
+                                9: "RU",
+                                10: "IN",
+                                11: "NZ_865",
+                                12: "TH",
+                                13: "UA_433",
+                                14: "UA_868",
+                                15: "MY_433",
+                                16: "MY_919",
+                                17: "SG_923",
+                            }
+                            # Try to get name attribute first, otherwise use mapping
+                            if hasattr(region_value, "name"):
+                                region_name = region_value.name
+                            else:
+                                region_name = region_names.get(region_value, f"Unknown ({region_value})")
+                            self.log_system(f"Region: {region_name}")
+            except Exception as e:
+                # Don't fail if we can't get radio config
+                pass
 
         except Exception as e:
             self.log_system(f"FATAL: Could not connect: {e}", error=True)
