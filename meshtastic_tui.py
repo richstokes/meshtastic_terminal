@@ -426,6 +426,11 @@ class ChatMonitor(App):
                             self.current_preset = preset_name
                             self.log_system(f"Radio preset: {preset_name}")
 
+                        # Also log frequency slot if available
+                        if hasattr(lora_config, "channel_num"):
+                            channel_num = lora_config.channel_num
+                            self.log_system(f"Frequency slot: {channel_num}")
+
                         # Also log region if available
                         if hasattr(lora_config, "region"):
                             region_value = lora_config.region
