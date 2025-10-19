@@ -101,6 +101,87 @@ QuitConfirmScreen {
     text-style: bold;
 }
 
+/* FrequencySlotSelectorScreen styles */
+FrequencySlotSelectorScreen {
+    align: center middle;
+}
+
+#frequency-dialog {
+    width: 60;
+    height: auto;
+    border: thick $background 80%;
+    background: $surface;
+    padding: 1 2;
+}
+
+#frequency-title {
+    width: 100%;
+    content-align: center middle;
+    text-style: bold;
+    color: $text;
+    margin-bottom: 1;
+}
+
+#frequency-subtitle {
+    width: 100%;
+    content-align: center middle;
+    color: $text 70%;
+    margin-bottom: 1;
+}
+
+#frequency-input-container {
+    width: 100%;
+    height: auto;
+    margin-top: 1;
+}
+
+#frequency-input {
+    width: 100%;
+    margin-bottom: 1;
+}
+
+#frequency-buttons {
+    width: 100%;
+    height: auto;
+    align: center middle;
+}
+
+#frequency-buttons Button {
+    margin: 0 1;
+    width: 15;
+    min-height: 3;
+}
+
+#frequency-buttons Button:focus {
+    border: thick $accent;
+    background: $accent;
+    text-style: bold;
+}
+
+#set-slot-button {
+    border: solid $primary;
+    background: $primary 20%;
+}
+
+#set-slot-button:focus {
+    border: thick $primary;
+    background: $primary;
+    color: $text;
+    text-style: bold;
+}
+
+#cancel-slot-button {
+    border: solid $error;
+    background: $error 20%;
+}
+
+#cancel-slot-button:focus {
+    border: thick $error;
+    background: $error;
+    color: $text;
+    text-style: bold;
+}
+
 /* ChatMonitor main app styles */
 Screen {
     background: $background;

@@ -27,6 +27,11 @@ from textual.reactive import reactive
 from textual import on
 from textual.screen import ModalScreen
 
+# Import modal screens
+from preset_selector import PresetSelectorScreen, RADIO_PRESETS
+from frequency_slot_selector import FrequencySlotSelectorScreen
+from quit_confirm import QuitConfirmScreen
+
 # Load CSS from external file
 CSS_FILE = Path(__file__).parent / "meshtastic_tui.css"
 with open(CSS_FILE, "r") as f:
@@ -37,179 +42,6 @@ SERIAL_PORT = None  # set explicitly if needed, e.g. "/dev/ttyUSB0"
 MAX_MESSAGES = 500
 NODES_FILE = Path("meshtastic_nodes.json")
 # ====================
-
-# Radio presets mapping
-RADIO_PRESETS = {
-    "LONG_FAST": 0,
-    "LONG_SLOW": 1,
-    "VERY_LONG_SLOW": 2,
-    "MEDIUM_SLOW": 3,
-    "MEDIUM_FAST": 4,
-    "SHORT_SLOW": 5,
-    "SHORT_FAST": 6,
-    "LONG_MODERATE": 7,
-}
-
-
-class PresetSelectorScreen(ModalScreen):
-    """Modal screen for selecting radio presets."""
-
-    BINDINGS = [
-        ("escape", "dismiss_dialog", "Cancel"),
-        ("enter", "select_button", "Select"),
-        ("up", "focus_previous", "Up"),
-        ("down", "focus_next", "Down"),
-        ("left", "focus_previous", "Left"),
-        ("right", "focus_next", "Right"),
-    ]
-
-    def __init__(self, current_preset: str = None):
-        super().__init__()
-        self.current_preset = current_preset
-        self.button_list = []
-
-    def compose(self) -> ComposeResult:
-        """Create the preset selector dialog."""
-        with Container(id="preset-dialog"):
-            current_text = (
-                f" (Current: {self.current_preset})" if self.current_preset else ""
-            )
-            yield Label(f"Select Radio Preset{current_text}", id="preset-title")
-            with Grid(id="preset-buttons") as grid:
-                for preset_name in RADIO_PRESETS.keys():
-                    button = Button(preset_name, id=f"preset-{preset_name}")
-                    button.can_focus = True
-                    yield button
-
-    def on_mount(self) -> None:
-        """Focus first button when mounted."""
-        # Store button list for navigation
-        self.button_list = list(self.query(Button))
-        if self.button_list:
-            # Focus the first button
-            self.set_focus(self.button_list[0])
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button press."""
-        preset_name = event.button.id.replace("preset-", "")
-        self.dismiss(preset_name)
-
-    def action_select_button(self) -> None:
-        """Select the currently focused button."""
-        focused = self.focused
-        if isinstance(focused, Button):
-            preset_name = focused.id.replace("preset-", "")
-            self.dismiss(preset_name)
-
-    def action_focus_previous(self) -> None:
-        """Move focus to the previous button."""
-        if not self.button_list:
-            return
-
-        focused = self.focused
-        if focused in self.button_list:
-            current_index = self.button_list.index(focused)
-            # Move to previous button (wrap around to end if at start)
-            previous_index = (current_index - 1) % len(self.button_list)
-            self.set_focus(self.button_list[previous_index])
-
-    def action_focus_next(self) -> None:
-        """Move focus to the next button."""
-        if not self.button_list:
-            return
-
-        focused = self.focused
-        if focused in self.button_list:
-            current_index = self.button_list.index(focused)
-            # Move to next button (wrap around to start if at end)
-            next_index = (current_index + 1) % len(self.button_list)
-            self.set_focus(self.button_list[next_index])
-
-    def action_dismiss_dialog(self) -> None:
-        """Dismiss dialog without selecting."""
-        self.dismiss(None)
-
-
-class QuitConfirmScreen(ModalScreen):
-    """Modal screen to confirm quitting the application."""
-
-    BINDINGS = [
-        ("y", "confirm_quit", "Yes"),
-        ("n", "cancel_quit", "No"),
-        ("escape", "cancel_quit", "Cancel"),
-        ("enter", "select_button", "Select"),
-        ("up", "focus_previous", "Up"),
-        ("down", "focus_next", "Down"),
-        ("left", "focus_previous", "Left"),
-        ("right", "focus_next", "Right"),
-    ]
-
-    def __init__(self):
-        super().__init__()
-        self.button_list = []
-
-    def compose(self) -> ComposeResult:
-        """Create the quit confirmation dialog."""
-        with Container(id="quit-dialog"):
-            yield Label("Are you sure you want to quit?", id="quit-message")
-            with Container(id="quit-buttons"):
-                yield Button("Yes (Y)", id="yes-button", variant="error")
-                yield Button("No (N)", id="no-button", variant="primary")
-
-    def on_mount(self) -> None:
-        """Focus the No button by default (safer choice)."""
-        # Store button list for navigation
-        self.button_list = list(self.query(Button))
-        no_button = self.query_one("#no-button", Button)
-        self.set_focus(no_button)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button press."""
-        if event.button.id == "yes-button":
-            self.dismiss(True)
-        else:
-            self.dismiss(False)
-
-    def action_confirm_quit(self) -> None:
-        """Confirm quit."""
-        self.dismiss(True)
-
-    def action_cancel_quit(self) -> None:
-        """Cancel quit."""
-        self.dismiss(False)
-
-    def action_select_button(self) -> None:
-        """Select the currently focused button."""
-        focused = self.focused
-        if isinstance(focused, Button):
-            if focused.id == "yes-button":
-                self.dismiss(True)
-            else:
-                self.dismiss(False)
-
-    def action_focus_previous(self) -> None:
-        """Move focus to the previous button."""
-        if not self.button_list:
-            return
-
-        focused = self.focused
-        if focused in self.button_list:
-            current_index = self.button_list.index(focused)
-            # Move to previous button (wrap around to end if at start)
-            previous_index = (current_index - 1) % len(self.button_list)
-            self.set_focus(self.button_list[previous_index])
-
-    def action_focus_next(self) -> None:
-        """Move focus to the next button."""
-        if not self.button_list:
-            return
-
-        focused = self.focused
-        if focused in self.button_list:
-            current_index = self.button_list.index(focused)
-            # Move to next button (wrap around to start if at end)
-            next_index = (current_index + 1) % len(self.button_list)
-            self.set_focus(self.button_list[next_index])
 
 
 class ChatMonitor(App):
@@ -222,6 +54,7 @@ class ChatMonitor(App):
     BINDINGS = [
         Binding("s", "send_message", "Send Message", show=True),
         Binding("ctrl+m", "change_preset", "Change Preset", show=True),
+        Binding("ctrl+f", "change_frequency_slot", "Change Freq Slot", show=True),
         Binding("q", "request_quit", "Quit", show=True),
     ]
 
@@ -238,6 +71,7 @@ class ChatMonitor(App):
         self.current_input_step = None  # 'dest' or 'message'
         self.known_nodes = {}  # Track nodes we've seen: {node_id: {name, last_seen}}
         self.current_preset = None  # Track current radio preset
+        self.current_frequency_slot = None  # Track current frequency slot
         self.is_reconnecting = False  # Track if we're in reconnection state
         self.auto_reconnect_enabled = True  # Enable automatic reconnection
         self.reconnect_worker = None  # Track the reconnect worker
@@ -429,6 +263,7 @@ class ChatMonitor(App):
                         # Also log frequency slot if available
                         if hasattr(lora_config, "channel_num"):
                             channel_num = lora_config.channel_num
+                            self.current_frequency_slot = channel_num
                             self.log_system(f"Frequency slot: {channel_num}")
 
                         # Also log region if available
@@ -729,6 +564,22 @@ class ChatMonitor(App):
             PresetSelectorScreen(self.current_preset), handle_preset_selection
         )
 
+    def action_change_frequency_slot(self) -> None:
+        """Show the frequency slot selector dialog."""
+        if not self.iface:
+            self.log_system("Not connected to device", error=True)
+            return
+
+        def handle_slot_selection(slot: int | None) -> None:
+            """Handle the frequency slot selection from the modal."""
+            if slot is not None:
+                self.run_worker(self.change_frequency_slot(slot), exclusive=False)
+
+        self.push_screen(
+            FrequencySlotSelectorScreen(self.current_frequency_slot),
+            handle_slot_selection,
+        )
+
     def action_request_quit(self) -> None:
         """Show quit confirmation dialog."""
 
@@ -792,6 +643,60 @@ class ChatMonitor(App):
             self.log_system(f"Error changing preset: {e}", error=True)
             self.is_reconnecting = False
 
+    async def change_frequency_slot(self, slot: int) -> None:
+        """Change the frequency slot and handle device reboot."""
+        if not 0 <= slot <= 83:
+            self.log_system(
+                f"Invalid frequency slot: {slot} (must be 0-83)", error=True
+            )
+            return
+
+        self.log_system(f"Changing frequency slot to {slot}...")
+
+        try:
+            loop = asyncio.get_event_loop()
+
+            # Set the frequency slot using the correct API
+            def set_slot():
+                try:
+                    node = self.iface.localNode
+                    if node:
+                        # Ensure we have the lora config
+                        if len(node.localConfig.ListFields()) == 0:
+                            node.requestConfig(
+                                node.localConfig.DESCRIPTOR.fields_by_name.get("lora")
+                            )
+                        # Set the channel_num value
+                        node.localConfig.lora.channel_num = slot
+                        # Write the config to the device
+                        node.writeConfig("lora")
+                        return True
+                    return False
+                except Exception as e:
+                    raise e
+
+            success = await loop.run_in_executor(None, set_slot)
+
+            if success:
+                self.log_system(
+                    f"Frequency slot changed to {slot}. Device will reboot..."
+                )
+                self.current_frequency_slot = slot
+                self.is_reconnecting = True
+
+                # Wait for device to reboot (typically takes 5-10 seconds)
+                await asyncio.sleep(10)
+
+                # Attempt to reconnect
+                self.log_system("Attempting to reconnect...")
+                await self.reconnect_device()
+            else:
+                self.log_system("Failed to change frequency slot", error=True)
+
+        except Exception as e:
+            self.log_system(f"Error changing frequency slot: {e}", error=True)
+            self.is_reconnecting = False
+
     async def reconnect_device(self) -> None:
         """Reconnect to the device after a reboot."""
         max_attempts = 5
@@ -845,6 +750,12 @@ class ChatMonitor(App):
                                     self.current_preset = preset_names.get(preset_value)
                                 self.log_system(
                                     f"Verified preset: {self.current_preset}"
+                                )
+                            # Update current frequency slot
+                            if hasattr(lora_config, "channel_num"):
+                                self.current_frequency_slot = lora_config.channel_num
+                                self.log_system(
+                                    f"Verified frequency slot: {self.current_frequency_slot}"
                                 )
                 except Exception:
                     pass
