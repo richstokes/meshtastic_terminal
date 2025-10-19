@@ -2,431 +2,342 @@
 """
 Meshtastic Chat Monitor
 A terminal UI for monitoring messages and sending replies.
-Press 's' to send a message, 'q' to quit.
+Press 's' to send a message, Ctrl+Q to quit.
 """
-import time
-import sys
+import asyncio
 from datetime import datetime
+from typing import Optional
 import meshtastic
 import meshtastic.serial_interface
 from pubsub import pub
-from rich.console import Console
-from rich.panel import Panel
-from rich.prompt import Prompt
-from rich.live import Live
-from rich.table import Table
-from rich.text import Text
-import threading
-import tty
-import termios
-import select
-
-# Terminal/shared state
-stdin_fd = None
-original_term_settings = None
-request_input_event = threading.Event()
-shutdown_event = threading.Event()
+from textual.app import App, ComposeResult
+from textual.containers import Container, Vertical
+from textual.widgets import Header, Footer, DataTable, Input, Static
+from textual.binding import Binding
+from textual.reactive import reactive
+from textual import on
 
 # ====== CONFIG ======
 SERIAL_PORT = None  # set explicitly if needed, e.g. "/dev/ttyUSB0"
-MAX_MESSAGES = 50  # Maximum number of messages to keep in history
+MAX_MESSAGES = 50
 # ====================
 
-console = Console()
-messages = []
-iface = None
-my_node_id = None
-live_display = None
-input_mode = False
-current_table = None  # The single table object we'll update
 
+class ChatMonitor(App):
+    """A Textual app for monitoring Meshtastic messages."""
 
-def on_connection(interface, topic=pub.AUTO_TOPIC):
-    global my_node_id
-    try:
-        node = interface.getMyNodeInfo()
-        my_node_id = node["user"]["id"]
-        log_system(f"Connected: {node['user']['shortName']} ({my_node_id})")
-    except Exception as e:
-        log_system(f"Connection warning: {e}")
+    CSS = """
+    Screen {
+        background: $background;
+    }
 
+    DataTable {
+        height: 1fr;
+        border: solid $primary;
+    }
 
-def on_disconnect(interface=None, topic=pub.AUTO_TOPIC):
-    log_system("Disconnected from device", error=True)
+    #input-container {
+        height: auto;
+        display: none;
+        border: solid $accent;
+        padding: 1;
+    }
 
+    #input-container.visible {
+        display: block;
+    }
 
-def on_receive(packet, interface):
-    """Monitor all received packets"""
-    decoded = packet.get("decoded", {})
-    portnum = decoded.get("portnum", "unknown")
+    Input {
+        margin: 0 1;
+    }
 
-    # Skip non-text message types
-    ignored_types = [
-        "POSITION_APP",
-        "TELEMETRY_APP",
-        "ROUTING_APP",
-        "NODEINFO_APP",
-        "ADMIN_APP",
-        "unknown",
-    ]
-    if portnum in ignored_types:
-        return
+    .system-message {
+        color: $warning;
+    }
 
-    # Only process text messages
-    if portnum == "TEXT_MESSAGE_APP" or portnum == 1:
-        message_content = decoded.get("text")
-        if not message_content and "payload" in decoded:
-            try:
-                payload = decoded["payload"]
-                if isinstance(payload, bytes):
-                    message_content = payload.decode("utf-8")
-                elif isinstance(payload, str):
-                    message_content = payload
-            except Exception:
-                return
+    .error-message {
+        color: $error;
+    }
 
-        if message_content:
-            from_id = packet.get("fromId", packet.get("from", "unknown"))
-            to_id = packet.get("toId", packet.get("to", "unknown"))
-            packet_id = packet.get("id")
-
-            log_message(from_id, to_id, message_content, packet_id)
-
-
-def log_message(from_id, to_id, content, packet_id=None):
-    """Add a message to the log"""
-    # Skip empty messages
-    if not content or not content.strip():
-        return
-
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    messages.append(
-        {
-            "time": timestamp,
-            "from": from_id,
-            "to": to_id,
-            "content": content,
-            "packet_id": packet_id,
-            "type": "message",
-        }
-    )
-
-    # Keep only last MAX_MESSAGES
-    if len(messages) > MAX_MESSAGES:
-        messages.pop(0)
-
-    # Update the live display
-    update_display()
-
-
-def log_system(message, error=False):
-    """Add a system message to the log"""
-    # Skip empty system messages
-    if not message or not message.strip():
-        return
-
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    messages.append(
-        {"time": timestamp, "content": message, "type": "system", "error": error}
-    )
-
-    if len(messages) > MAX_MESSAGES:
-        messages.pop(0)
-
-    # Update the live display
-    update_display()
-
-
-def rebuild_table():
-    """Rebuild the table from current messages"""
-    global current_table
-
-    # Create a fresh table
-    current_table = Table(
-        show_header=True, header_style="bold magenta", show_lines=True, expand=True
-    )
-    current_table.add_column("Time", style="dim", width=8)
-    current_table.add_column("From", style="cyan", width=15)
-    current_table.add_column("To", style="cyan", width=15)
-    current_table.add_column("Message", style="white")
-
-    # Get last 30 messages with content
-    display_messages = messages[-30:] if len(messages) > 30 else messages
-
-    for msg in display_messages:
-        if msg["type"] == "system":
-            style = "red" if msg.get("error") else "yellow"
-            current_table.add_row(
-                msg["time"],
-                Text("[SYSTEM]", style=style),
-                "",
-                Text(msg["content"], style=style),
-            )
-        else:
-            # Highlight messages from us
-            from_id = msg.get("from", "unknown")
-            to_id = msg.get("to", "unknown")
-            from_style = "green bold" if from_id == my_node_id else "cyan"
-            to_style = "green bold" if to_id == my_node_id else "cyan"
-
-            current_table.add_row(
-                msg["time"],
-                Text(str(from_id), style=from_style),
-                Text(str(to_id), style=to_style),
-                msg["content"],
-            )
-
-
-def update_display():
-    """Update the live display with current messages"""
-    if live_display and not input_mode:
-        rebuild_table()
-        panel = Panel(
-            current_table,
-            title="[bold blue]Meshtastic Chat Monitor[/bold blue]",
-            subtitle="[dim]Press 's' to send message, 'q' to quit[/dim]",
-            border_style="blue",
-        )
-        live_display.update(panel, refresh=True)
-
-
-def _read_line_raw(prompt_text: str, default: str | None = None) -> str:
-    """Read a line in raw mode with basic editing and ESC/Ctrl+C cancel.
-
-    Returns the entered string. If empty and default is provided, returns default.
-    Raises KeyboardInterrupt on ESC or Ctrl+C to signal cancel.
+    .from-me {
+        color: $success;
+        text-style: bold;
+    }
     """
-    # Show prompt
-    if default is not None and default != "":
-        prompt_full = f"{prompt_text} [{default}]: "
-    else:
-        prompt_full = f"{prompt_text}: "
 
-    sys.stdout.write(prompt_full)
-    sys.stdout.flush()
+    BINDINGS = [
+        Binding("s", "send_message", "Send Message", show=True),
+        Binding("ctrl+q", "quit", "Quit", show=True),
+    ]
 
-    buf = []
-    while True:
-        # Use select to avoid blocking forever in edge cases
-        r, _, _ = select.select([sys.stdin], [], [], 0.1)
-        if not r:
-            # allow cooperative multitasking
-            if shutdown_event.is_set():
-                raise KeyboardInterrupt
-            continue
-        ch = sys.stdin.read(1)
-        if not ch:
-            continue
-        code = ch
+    messages: reactive[list] = reactive(list)
+    input_mode: reactive[bool] = reactive(False)
 
-        # Enter / Return
-        if code in ("\r", "\n"):
-            sys.stdout.write("\n")
-            sys.stdout.flush()
-            s = "".join(buf)
-            if not s and default is not None:
-                return default
-            return s
-        # ESC cancels
-        if code == "\x1b":
-            # print a newline and raise cancel
-            sys.stdout.write("\n")
-            sys.stdout.flush()
-            raise KeyboardInterrupt
-        # Ctrl+C cancels
-        if code == "\x03":
-            sys.stdout.write("\n")
-            sys.stdout.flush()
-            raise KeyboardInterrupt
-        # Backspace/Delete
-        if code in ("\x7f", "\b"):
-            if buf:
-                buf.pop()
-                # erase last char on terminal
-                sys.stdout.write("\b \b")
-                sys.stdout.flush()
-            continue
-        # Printable characters
-        if " " <= code <= "~":
-            buf.append(code)
-            sys.stdout.write(code)
-            sys.stdout.flush()
-            continue
-        # ignore others
+    def __init__(self):
+        super().__init__()
+        self.iface = None
+        self.my_node_id = None
+        self.dest_input = None
+        self.message_input = None
+        self.current_input_step = None  # 'dest' or 'message'
 
+    def compose(self) -> ComposeResult:
+        """Create child widgets."""
+        yield Header()
+        yield DataTable(id="messages-table")
+        with Vertical(id="input-container"):
+            yield Static("", id="input-label")
+            yield Input(placeholder="", id="user-input")
+        yield Footer()
 
-def send_message_prompt():
-    """Prompt user to send a message (runs in main thread)."""
-    global input_mode
+    def on_mount(self) -> None:
+        """Set up the app when mounted."""
+        # Set up the table
+        table = self.query_one("#messages-table", DataTable)
+        table.cursor_type = "none"
+        table.zebra_stripes = True
+        table.add_columns("Time", "From", "To", "Message")
 
-    input_mode = True
-    # Pause live updates; keep raw mode and pause input thread via input_mode flag
-    if live_display:
-        live_display.stop()
+        # Connect to device in the background
+        self.run_worker(self.connect_device(), exclusive=True)
 
-    try:
-        console.print("\n[bold cyan]Send Message[/bold cyan]")
-
-        # Destination (supports default)
-        dest = _read_line_raw("Destination", default="^all")
-
-        # Message
-        message = _read_line_raw("Message")
-
-        if message:
-            try:
-                console.print(f"[yellow]Sending to {dest}...[/yellow]")
-                iface.sendText(message, destinationId=dest, wantAck=False)
-                log_system(f"Sent message to {dest}")
-            except Exception as e:
-                log_system(f"Failed to send: {e}", error=True)
-        else:
-            log_system("Message cancelled")
-    except KeyboardInterrupt:
-        # Ctrl+C during input: cancel and resume live view
-        log_system("Message input cancelled")
-    finally:
-        input_mode = False
-        # Rebuild and resume live display, then return to raw mode for key handling
-        if live_display:
-            rebuild_table()
-            panel = Panel(
-                current_table,
-                title="[bold blue]Meshtastic Chat Monitor[/bold blue]",
-                subtitle="[dim]Press 's' to send message, 'q' to quit[/dim]",
-                border_style="blue",
+    async def connect_device(self) -> None:
+        """Connect to Meshtastic device."""
+        self.log_system("Connecting to device...")
+        
+        try:
+            # Run blocking meshtastic operations in executor
+            loop = asyncio.get_event_loop()
+            self.iface = await loop.run_in_executor(
+                None, 
+                lambda: meshtastic.serial_interface.SerialInterface(devPath=SERIAL_PORT)
             )
-            live_display.start()
-            live_display.update(panel, refresh=True)
-        # Ensure raw mode is active for background key reader
-        if stdin_fd is not None:
+            
+            self.log_system("Initializing connection...")
+            
+            # Subscribe to events
+            pub.subscribe(self.on_connection, "meshtastic.connection.established")
+            pub.subscribe(self.on_disconnect, "meshtastic.connection.lost")
+            pub.subscribe(self.on_receive, "meshtastic.receive")
+            
+            # Wait a moment for connection
+            await asyncio.sleep(2)
+            
+            # Get node info
+            info = await loop.run_in_executor(None, self.iface.getMyNodeInfo)
+            self.log_system(f"Ready: {info['user']['longName']}")
+            
+        except Exception as e:
+            self.log_system(f"FATAL: Could not connect: {e}", error=True)
+
+    def on_connection(self, interface, topic=pub.AUTO_TOPIC):
+        """Handle connection event."""
+        try:
+            node = interface.getMyNodeInfo()
+            self.my_node_id = node["user"]["id"]
+            self.log_system(f"Connected: {node['user']['shortName']} ({self.my_node_id})")
+        except Exception as e:
+            self.log_system(f"Connection warning: {e}")
+
+    def on_disconnect(self, interface=None, topic=pub.AUTO_TOPIC):
+        """Handle disconnection event."""
+        self.log_system("Disconnected from device", error=True)
+
+    def on_receive(self, packet, interface):
+        """Monitor received packets."""
+        decoded = packet.get("decoded", {})
+        portnum = decoded.get("portnum", "unknown")
+
+        # Skip non-text message types
+        ignored_types = [
+            "POSITION_APP",
+            "TELEMETRY_APP",
+            "ROUTING_APP",
+            "NODEINFO_APP",
+            "ADMIN_APP",
+            "unknown",
+        ]
+        if portnum in ignored_types:
+            return
+
+        # Only process text messages
+        if portnum == "TEXT_MESSAGE_APP" or portnum == 1:
+            message_content = decoded.get("text")
+            if not message_content and "payload" in decoded:
+                try:
+                    payload = decoded["payload"]
+                    if isinstance(payload, bytes):
+                        message_content = payload.decode("utf-8")
+                    elif isinstance(payload, str):
+                        message_content = payload
+                except Exception:
+                    return
+
+            if message_content:
+                from_id = packet.get("fromId", packet.get("from", "unknown"))
+                to_id = packet.get("toId", packet.get("to", "unknown"))
+                self.log_message(from_id, to_id, message_content)
+
+    def log_message(self, from_id: str, to_id: str, content: str):
+        """Add a message to the table."""
+        if not content or not content.strip():
+            return
+
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        
+        table = self.query_one("#messages-table", DataTable)
+        
+        # Apply styling based on sender
+        from_style = "from-me" if from_id == self.my_node_id else ""
+        to_style = "from-me" if to_id == self.my_node_id else ""
+        
+        table.add_row(
+            timestamp,
+            from_id,
+            to_id,
+            content
+        )
+        
+        # Keep only last MAX_MESSAGES
+        if table.row_count > MAX_MESSAGES:
+            table.remove_row(table.rows[0].key)
+        
+        # Scroll to bottom
+        table.scroll_end(animate=False)
+
+    def log_system(self, message: str, error: bool = False):
+        """Add a system message to the table."""
+        if not message or not message.strip():
+            return
+
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        table = self.query_one("#messages-table", DataTable)
+        
+        style_class = "error-message" if error else "system-message"
+        
+        table.add_row(
+            timestamp,
+            "[SYSTEM]",
+            "",
+            message
+        )
+        
+        # Keep only last MAX_MESSAGES
+        if table.row_count > MAX_MESSAGES:
+            table.remove_row(table.rows[0].key)
+        
+        # Scroll to bottom
+        table.scroll_end(animate=False)
+
+    def action_send_message(self) -> None:
+        """Start the message sending flow."""
+        if self.input_mode:
+            return
+        
+        self.input_mode = True
+        self.current_input_step = "dest"
+        
+        # Show input container
+        container = self.query_one("#input-container")
+        container.add_class("visible")
+        
+        # Update label and focus input
+        label = self.query_one("#input-label", Static)
+        label.update("Destination [^all]:")
+        
+        input_widget = self.query_one("#user-input", Input)
+        input_widget.value = ""
+        input_widget.placeholder = "^all"
+        input_widget.focus()
+
+    @on(Input.Submitted, "#user-input")
+    def handle_input_submit(self, event: Input.Submitted) -> None:
+        """Handle input submission."""
+        if not self.input_mode:
+            return
+        
+        value = event.value.strip()
+        
+        if self.current_input_step == "dest":
+            # Save destination and move to message
+            self.dest_input = value if value else "^all"
+            self.current_input_step = "message"
+            
+            label = self.query_one("#input-label", Static)
+            label.update("Message:")
+            
+            input_widget = self.query_one("#user-input", Input)
+            input_widget.value = ""
+            input_widget.placeholder = "Type your message..."
+            
+        elif self.current_input_step == "message":
+            # Send the message
+            self.message_input = value
+            
+            if self.message_input:
+                self.send_text_message(self.dest_input, self.message_input)
+            else:
+                self.log_system("Message cancelled (empty)")
+            
+            self.cancel_input()
+
+    async def send_text_message(self, dest: str, message: str) -> None:
+        """Send a text message."""
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: self.iface.sendText(message, destinationId=dest, wantAck=False)
+            )
+            self.log_system(f"Sent message to {dest}")
+        except Exception as e:
+            self.log_system(f"Failed to send: {e}", error=True)
+
+    def cancel_input(self) -> None:
+        """Cancel input mode."""
+        self.input_mode = False
+        self.current_input_step = None
+        self.dest_input = None
+        self.message_input = None
+        
+        # Hide input container
+        container = self.query_one("#input-container")
+        container.remove_class("visible")
+        
+        # Clear input
+        input_widget = self.query_one("#user-input", Input)
+        input_widget.value = ""
+
+    def on_input_key(self, event) -> None:
+        """Handle key events in input mode."""
+        # ESC to cancel
+        if event.key == "escape" and self.input_mode:
+            self.log_system("Message input cancelled")
+            self.cancel_input()
+
+    async def on_shutdown(self) -> None:
+        """Clean up when shutting down."""
+        # Unsubscribe from events
+        try:
+            pub.unsubscribe(self.on_connection, "meshtastic.connection.established")
+            pub.unsubscribe(self.on_disconnect, "meshtastic.connection.lost")
+            pub.unsubscribe(self.on_receive, "meshtastic.receive")
+        except Exception:
+            pass
+        
+        # Close interface
+        if self.iface:
             try:
-                tty.setraw(stdin_fd)
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, self.iface.close)
             except Exception:
                 pass
-
-
-def input_thread():
-    """Thread to handle single-key commands ('s' to send, 'q' to quit)."""
-    try:
-        if stdin_fd is not None:
-            tty.setraw(stdin_fd)
-        while True:
-            if shutdown_event.is_set():
-                break
-            # Do not consume stdin while in input mode
-            if input_mode:
-                time.sleep(0.05)
-                continue
-
-            # Poll for key press without blocking indefinitely
-            r, _, _ = select.select([sys.stdin], [], [], 0.1)
-            if not r:
-                continue
-            ch = sys.stdin.read(1)
-
-            if ch == "q":
-                log_system("Shutting down...")
-                shutdown_event.set()
-                break
-            elif ch == "s":
-                request_input_event.set()
-            # ESC in live mode: no-op, reserved for cancel within prompt
-
-    except Exception as e:
-        log_system(f"Input thread error: {e}", error=True)
 
 
 def main():
-    global iface, live_display, current_table
-
-    # Prepare terminal settings
-    global stdin_fd, original_term_settings
-    stdin_fd = sys.stdin.fileno()
-    original_term_settings = termios.tcgetattr(stdin_fd)
-
-    # Show initialization screen
-    console.print(
-        Panel(
-            "[bold cyan]Meshtastic Chat Monitor[/bold cyan]\n\n"
-            "Connecting to device...",
-            border_style="blue",
-        )
-    )
-
-    try:
-        iface = meshtastic.serial_interface.SerialInterface(devPath=SERIAL_PORT)
-    except Exception as e:
-        console.print(f"[red bold]FATAL: Could not open serial port: {e}[/red bold]")
-        sys.exit(1)
-
-    console.print("[yellow]Initializing connection...[/yellow]")
-
-    # Subscribe to events
-    pub.subscribe(on_connection, "meshtastic.connection.established")
-    pub.subscribe(on_disconnect, "meshtastic.connection.lost")
-    pub.subscribe(on_receive, "meshtastic.receive")
-
-    # Wait for connection
-    time.sleep(2)
-
-    # Confirm device is alive
-    try:
-        info = iface.getMyNodeInfo()
-        console.print(
-            f"[green]✓ Connected: {info['user']['longName']} ({info['user']['id']})[/green]"
-        )
-        log_system(f"Ready: {info['user']['longName']}")
-    except Exception as e:
-        console.print(f"[red]✗ Could not verify device: {e}[/red]")
-        log_system(f"Could not verify device: {e}", error=True)
-
-    console.print("\n[dim]Starting chat monitor...[/dim]")
-    time.sleep(0.5)
-
-    # Initialize the table
-    rebuild_table()
-
-    # Create the initial panel
-    initial_panel = Panel(
-        current_table,
-        title="[bold blue]Meshtastic Chat Monitor[/bold blue]",
-        subtitle="[dim]Press 's' to send message, 'q' to quit[/dim]",
-        border_style="blue",
-    )
-
-    # Start input thread
-    input_handler = threading.Thread(target=input_thread, daemon=True)
-    input_handler.start()
-
-    # Start the live display with auto_refresh disabled - we'll update manually
-    try:
-        with Live(initial_panel, auto_refresh=False, console=console) as live:
-            live_display = live
-            while True:
-                # Handle queued actions from input thread
-                if shutdown_event.is_set():
-                    break
-                if request_input_event.is_set():
-                    request_input_event.clear()
-                    send_message_prompt()
-                time.sleep(0.1)
-    except KeyboardInterrupt:
-        # If Ctrl+C somehow reaches here (e.g., outside raw mode), treat as shutdown
-        console.print("\n[yellow]Interrupted by user[/yellow]")
-    finally:
-        # Restore terminal mode
-        if stdin_fd is not None and original_term_settings is not None:
-            try:
-                termios.tcsetattr(stdin_fd, termios.TCSADRAIN, original_term_settings)
-            except Exception:
-                pass
-        if iface:
-            try:
-                iface.close()
-            except Exception:
-                pass
-        console.print("[green]Disconnected. Goodbye![/green]")
+    """Run the app."""
+    app = ChatMonitor()
+    app.run()
 
 
 if __name__ == "__main__":
