@@ -4,14 +4,18 @@ A collection of utility scripts for working with Meshtastic devices. These scrip
 
 ## Scripts
 
-### 1. Chat Monitor (`chat_monitor.py`)
-A terminal UI for monitoring Meshtastic messages in real-time with the ability to send replies.
+### 1. Meshtastic TUI (`meshtastic_tui.py`)
+A modern terminal UI for monitoring Meshtastic messages in real-time with the ability to send replies.
 
 **Features:**
 - Real-time message display with timestamps
-- Interactive UI using Rich library
+- Interactive UI using Textual framework
+- Node discovery tracking with persistence
+- Radio configuration display (preset/region)
+- Live node counter in header
 - Press 's' to send a message
-- Press 'q' to quit
+- Press Ctrl+Q to quit
+- Press ESC to cancel message input
 - Automatic message history with configurable limits
 
 ### 2. Broadcast Until Acked (`broadcast_until_acked.py`)
@@ -48,7 +52,8 @@ For other installation methods, see [uv documentation](https://github.com/astral
 ### 2. Clone or download this repository
 
 ```bash
-cd /path/to/meshtastic_scripts
+gh repo clone richstokes/meshtastic_scripts
+cd meshtastic_scripts
 ```
 
 ### 3. Install dependencies with uv
@@ -69,10 +74,10 @@ This will:
 
 The recommended way to run these scripts is using `uv run`:
 
-#### Chat Monitor
+#### Meshtastic TUI
 
 ```bash
-uv run python chat_monitor.py
+uv run python meshtastic_tui.py
 ```
 
 #### Broadcast Until Acked
