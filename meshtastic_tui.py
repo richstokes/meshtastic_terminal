@@ -166,6 +166,82 @@ class PresetSelectorScreen(ModalScreen):
         self.dismiss(None)
 
 
+class QuitConfirmScreen(ModalScreen):
+    """Modal screen to confirm quitting the application."""
+
+    CSS = """
+    QuitConfirmScreen {
+        align: center middle;
+    }
+
+    #quit-dialog {
+        width: 50;
+        height: auto;
+        border: thick $background 80%;
+        background: $surface;
+        padding: 2;
+    }
+
+    #quit-message {
+        width: 100%;
+        content-align: center middle;
+        text-style: bold;
+        color: $warning;
+        margin-bottom: 2;
+    }
+
+    #quit-buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+    }
+
+    #quit-buttons Button {
+        margin: 0 1;
+        min-width: 10;
+    }
+
+    #quit-buttons Button:focus {
+        border: heavy $accent;
+        background: $accent 20%;
+    }
+    """
+
+    BINDINGS = [
+        ("y", "confirm_quit", "Yes"),
+        ("n", "cancel_quit", "No"),
+        ("escape", "cancel_quit", "Cancel"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        """Create the quit confirmation dialog."""
+        with Container(id="quit-dialog"):
+            yield Label("Are you sure you want to quit?", id="quit-message")
+            with Container(id="quit-buttons"):
+                yield Button("Yes (Y)", id="yes-button", variant="error")
+                yield Button("No (N)", id="no-button", variant="primary")
+
+    def on_mount(self) -> None:
+        """Focus the No button by default (safer choice)."""
+        no_button = self.query_one("#no-button", Button)
+        self.set_focus(no_button)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button press."""
+        if event.button.id == "yes-button":
+            self.dismiss(True)
+        else:
+            self.dismiss(False)
+
+    def action_confirm_quit(self) -> None:
+        """Confirm quit."""
+        self.dismiss(True)
+
+    def action_cancel_quit(self) -> None:
+        """Cancel quit."""
+        self.dismiss(False)
+
+
 class ChatMonitor(App):
     """A Textual app for monitoring Meshtastic messages."""
 
@@ -219,7 +295,7 @@ class ChatMonitor(App):
     BINDINGS = [
         Binding("s", "send_message", "Send Message", show=True),
         Binding("ctrl+m", "change_preset", "Change Preset", show=True),
-        Binding("ctrl+q", "quit", "Quit", show=True),
+        Binding("q", "request_quit", "Quit", show=True),
     ]
 
     messages: reactive[list] = reactive(list)
@@ -677,6 +753,16 @@ class ChatMonitor(App):
         self.push_screen(
             PresetSelectorScreen(self.current_preset), handle_preset_selection
         )
+
+    def action_request_quit(self) -> None:
+        """Show quit confirmation dialog."""
+
+        def handle_quit_response(confirmed: bool) -> None:
+            """Handle the quit confirmation response."""
+            if confirmed:
+                self.exit()
+
+        self.push_screen(QuitConfirmScreen(), handle_quit_response)
 
     async def change_radio_preset(self, preset_name: str) -> None:
         """Change the radio preset and handle device reboot."""
