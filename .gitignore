@@ -1,4 +1,8 @@
 .vscode/
+
+# Meshtastic chat monitor data
+meshtastic_nodes.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
