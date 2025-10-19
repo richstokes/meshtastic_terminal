@@ -199,11 +199,37 @@ class QuitConfirmScreen(ModalScreen):
     #quit-buttons Button {
         margin: 0 1;
         min-width: 10;
+        min-height: 3;
     }
 
     #quit-buttons Button:focus {
-        border: heavy $accent;
-        background: $accent 20%;
+        border: thick $accent;
+        background: $accent;
+        text-style: bold;
+    }
+
+    #yes-button {
+        border: solid $error;
+        background: $error 20%;
+    }
+
+    #yes-button:focus {
+        border: thick $error;
+        background: $error;
+        color: $text;
+        text-style: bold;
+    }
+
+    #no-button {
+        border: solid $success;
+        background: $success 20%;
+    }
+
+    #no-button:focus {
+        border: thick $success;
+        background: $success;
+        color: $text;
+        text-style: bold;
     }
     """
 
@@ -211,7 +237,16 @@ class QuitConfirmScreen(ModalScreen):
         ("y", "confirm_quit", "Yes"),
         ("n", "cancel_quit", "No"),
         ("escape", "cancel_quit", "Cancel"),
+        ("enter", "select_button", "Select"),
+        ("up", "focus_previous", "Up"),
+        ("down", "focus_next", "Down"),
+        ("left", "focus_previous", "Left"),
+        ("right", "focus_next", "Right"),
     ]
+
+    def __init__(self):
+        super().__init__()
+        self.button_list = []
 
     def compose(self) -> ComposeResult:
         """Create the quit confirmation dialog."""
@@ -223,6 +258,8 @@ class QuitConfirmScreen(ModalScreen):
 
     def on_mount(self) -> None:
         """Focus the No button by default (safer choice)."""
+        # Store button list for navigation
+        self.button_list = list(self.query(Button))
         no_button = self.query_one("#no-button", Button)
         self.set_focus(no_button)
 
@@ -240,6 +277,39 @@ class QuitConfirmScreen(ModalScreen):
     def action_cancel_quit(self) -> None:
         """Cancel quit."""
         self.dismiss(False)
+
+    def action_select_button(self) -> None:
+        """Select the currently focused button."""
+        focused = self.focused
+        if isinstance(focused, Button):
+            if focused.id == "yes-button":
+                self.dismiss(True)
+            else:
+                self.dismiss(False)
+
+    def action_focus_previous(self) -> None:
+        """Move focus to the previous button."""
+        if not self.button_list:
+            return
+
+        focused = self.focused
+        if focused in self.button_list:
+            current_index = self.button_list.index(focused)
+            # Move to previous button (wrap around to end if at start)
+            previous_index = (current_index - 1) % len(self.button_list)
+            self.set_focus(self.button_list[previous_index])
+
+    def action_focus_next(self) -> None:
+        """Move focus to the next button."""
+        if not self.button_list:
+            return
+
+        focused = self.focused
+        if focused in self.button_list:
+            current_index = self.button_list.index(focused)
+            # Move to next button (wrap around to start if at end)
+            next_index = (current_index + 1) % len(self.button_list)
+            self.set_focus(self.button_list[next_index])
 
 
 class ChatMonitor(App):
