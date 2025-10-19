@@ -104,29 +104,31 @@ class ChatMonitor(App):
     async def connect_device(self) -> None:
         """Connect to Meshtastic device."""
         self.log_system("Connecting to device...")
-        
+
         try:
             # Run blocking meshtastic operations in executor
             loop = asyncio.get_event_loop()
             self.iface = await loop.run_in_executor(
-                None, 
-                lambda: meshtastic.serial_interface.SerialInterface(devPath=SERIAL_PORT)
+                None,
+                lambda: meshtastic.serial_interface.SerialInterface(
+                    devPath=SERIAL_PORT
+                ),
             )
-            
+
             self.log_system("Initializing connection...")
-            
+
             # Subscribe to events
             pub.subscribe(self.on_connection, "meshtastic.connection.established")
             pub.subscribe(self.on_disconnect, "meshtastic.connection.lost")
             pub.subscribe(self.on_receive, "meshtastic.receive")
-            
+
             # Wait a moment for connection
             await asyncio.sleep(2)
-            
+
             # Get node info
             info = await loop.run_in_executor(None, self.iface.getMyNodeInfo)
             self.log_system(f"Ready: {info['user']['longName']}")
-            
+
         except Exception as e:
             self.log_system(f"FATAL: Could not connect: {e}", error=True)
 
@@ -135,7 +137,9 @@ class ChatMonitor(App):
         try:
             node = interface.getMyNodeInfo()
             self.my_node_id = node["user"]["id"]
-            self.log_system(f"Connected: {node['user']['shortName']} ({self.my_node_id})")
+            self.log_system(
+                f"Connected: {node['user']['shortName']} ({self.my_node_id})"
+            )
         except Exception as e:
             self.log_system(f"Connection warning: {e}")
 
@@ -184,24 +188,19 @@ class ChatMonitor(App):
             return
 
         timestamp = datetime.now().strftime("%H:%M:%S")
-        
+
         table = self.query_one("#messages-table", DataTable)
-        
+
         # Apply styling based on sender
         from_style = "from-me" if from_id == self.my_node_id else ""
         to_style = "from-me" if to_id == self.my_node_id else ""
-        
-        table.add_row(
-            timestamp,
-            from_id,
-            to_id,
-            content
-        )
-        
+
+        table.add_row(timestamp, from_id, to_id, content)
+
         # Keep only last MAX_MESSAGES
         if table.row_count > MAX_MESSAGES:
             table.remove_row(table.rows[0].key)
-        
+
         # Scroll to bottom
         table.scroll_end(animate=False)
 
@@ -212,20 +211,15 @@ class ChatMonitor(App):
 
         timestamp = datetime.now().strftime("%H:%M:%S")
         table = self.query_one("#messages-table", DataTable)
-        
+
         style_class = "error-message" if error else "system-message"
-        
-        table.add_row(
-            timestamp,
-            "[SYSTEM]",
-            "",
-            message
-        )
-        
+
+        table.add_row(timestamp, "[SYSTEM]", "", message)
+
         # Keep only last MAX_MESSAGES
         if table.row_count > MAX_MESSAGES:
             table.remove_row(table.rows[0].key)
-        
+
         # Scroll to bottom
         table.scroll_end(animate=False)
 
@@ -233,18 +227,18 @@ class ChatMonitor(App):
         """Start the message sending flow."""
         if self.input_mode:
             return
-        
+
         self.input_mode = True
         self.current_input_step = "dest"
-        
+
         # Show input container
         container = self.query_one("#input-container")
         container.add_class("visible")
-        
+
         # Update label and focus input
         label = self.query_one("#input-label", Static)
         label.update("Destination [^all]:")
-        
+
         input_widget = self.query_one("#user-input", Input)
         input_widget.value = ""
         input_widget.placeholder = "^all"
@@ -255,30 +249,34 @@ class ChatMonitor(App):
         """Handle input submission."""
         if not self.input_mode:
             return
-        
+
         value = event.value.strip()
-        
+
         if self.current_input_step == "dest":
             # Save destination and move to message
             self.dest_input = value if value else "^all"
             self.current_input_step = "message"
-            
+
             label = self.query_one("#input-label", Static)
             label.update("Message:")
-            
+
             input_widget = self.query_one("#user-input", Input)
             input_widget.value = ""
             input_widget.placeholder = "Type your message..."
-            
+
         elif self.current_input_step == "message":
             # Send the message
             self.message_input = value
-            
+
             if self.message_input:
-                self.send_text_message(self.dest_input, self.message_input)
+                # Run async send in background
+                self.run_worker(
+                    self.send_text_message(self.dest_input, self.message_input),
+                    exclusive=False,
+                )
             else:
                 self.log_system("Message cancelled (empty)")
-            
+
             self.cancel_input()
 
     async def send_text_message(self, dest: str, message: str) -> None:
@@ -287,7 +285,7 @@ class ChatMonitor(App):
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 None,
-                lambda: self.iface.sendText(message, destinationId=dest, wantAck=False)
+                lambda: self.iface.sendText(message, destinationId=dest, wantAck=False),
             )
             self.log_system(f"Sent message to {dest}")
         except Exception as e:
@@ -299,11 +297,11 @@ class ChatMonitor(App):
         self.current_input_step = None
         self.dest_input = None
         self.message_input = None
-        
+
         # Hide input container
         container = self.query_one("#input-container")
         container.remove_class("visible")
-        
+
         # Clear input
         input_widget = self.query_one("#user-input", Input)
         input_widget.value = ""
@@ -324,7 +322,7 @@ class ChatMonitor(App):
             pub.unsubscribe(self.on_receive, "meshtastic.receive")
         except Exception:
             pass
-        
+
         # Close interface
         if self.iface:
             try:
