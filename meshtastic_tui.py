@@ -239,6 +239,8 @@ class ChatMonitor(App):
         self.known_nodes = {}  # Track nodes we've seen: {node_id: {name, last_seen}}
         self.current_preset = None  # Track current radio preset
         self.is_reconnecting = False  # Track if we're in reconnection state
+        self.auto_reconnect_enabled = True  # Enable automatic reconnection
+        self.reconnect_worker = None  # Track the reconnect worker
         self.load_known_nodes()
 
     def compose(self) -> ComposeResult:
@@ -287,6 +289,21 @@ class ChatMonitor(App):
             # Log error but don't crash
             pass
 
+    def subscribe_to_events(self) -> None:
+        """Subscribe to pub/sub events (unsubscribes first to avoid duplicates)."""
+        try:
+            # Unsubscribe first to avoid duplicate subscriptions
+            pub.unsubscribe(self.on_connection, "meshtastic.connection.established")
+            pub.unsubscribe(self.on_disconnect, "meshtastic.connection.lost")
+            pub.unsubscribe(self.on_receive, "meshtastic.receive")
+        except Exception:
+            pass  # Ignore if not subscribed
+
+        # Now subscribe
+        pub.subscribe(self.on_connection, "meshtastic.connection.established")
+        pub.subscribe(self.on_disconnect, "meshtastic.connection.lost")
+        pub.subscribe(self.on_receive, "meshtastic.receive")
+
     def register_node(self, node_id: str, node_name: str = None) -> bool:
         """
         Register a node and return True if it's newly discovered.
@@ -333,9 +350,7 @@ class ChatMonitor(App):
             self.log_system("Initializing connection...")
 
             # Subscribe to events
-            pub.subscribe(self.on_connection, "meshtastic.connection.established")
-            pub.subscribe(self.on_disconnect, "meshtastic.connection.lost")
-            pub.subscribe(self.on_receive, "meshtastic.receive")
+            self.subscribe_to_events()
 
             # Wait a moment for connection
             await asyncio.sleep(2)
@@ -458,12 +473,40 @@ class ChatMonitor(App):
             self.log_system(
                 f"Connected: {node['user']['shortName']} ({self.my_node_id})"
             )
+
+            # Stop any auto-reconnect attempts since we're now connected
+            if self.is_reconnecting:
+                self.is_reconnecting = False
+                if self.reconnect_worker is not None:
+                    self.reconnect_worker.cancel()
+                    self.reconnect_worker = None
+
         except Exception as e:
             self.log_system(f"Connection warning: {e}")
 
     def on_disconnect(self, interface=None, topic=pub.AUTO_TOPIC):
         """Handle disconnection event."""
         self.log_system("Disconnected from device", error=True)
+
+        # Close the existing interface to prevent automatic reconnection
+        if self.iface:
+            try:
+                self.iface.close()
+            except Exception:
+                pass
+            self.iface = None
+
+        # Start auto-reconnect if enabled and not already reconnecting
+        if self.auto_reconnect_enabled and not self.is_reconnecting:
+            self.log_system("Will attempt to reconnect in 30 seconds...")
+            self.is_reconnecting = True
+            # Cancel any existing reconnect worker
+            if self.reconnect_worker is not None:
+                self.reconnect_worker.cancel()
+            # Start new reconnect worker
+            self.reconnect_worker = self.run_worker(
+                self.auto_reconnect_loop(), exclusive=False
+            )
 
     def on_receive(self, packet, interface):
         """Monitor received packets."""
@@ -773,9 +816,7 @@ class ChatMonitor(App):
                 )
 
                 # Re-subscribe to events
-                pub.subscribe(self.on_connection, "meshtastic.connection.established")
-                pub.subscribe(self.on_disconnect, "meshtastic.connection.lost")
-                pub.subscribe(self.on_receive, "meshtastic.receive")
+                self.subscribe_to_events()
 
                 # Wait for connection to stabilize
                 await asyncio.sleep(2)
@@ -814,8 +855,77 @@ class ChatMonitor(App):
                     )
                     self.is_reconnecting = False
 
+    async def auto_reconnect_loop(self) -> None:
+        """Automatically attempt to reconnect every 30 seconds after disconnect."""
+        while self.is_reconnecting and self.auto_reconnect_enabled:
+            try:
+                # Wait 30 seconds before attempting reconnect
+                await asyncio.sleep(30)
+
+                # Check if we should stop (might have been cancelled or connected elsewhere)
+                if not self.auto_reconnect_enabled or not self.is_reconnecting:
+                    break
+
+                self.log_system("Attempting automatic reconnection...")
+
+                # Close the old interface if it exists
+                if self.iface:
+                    loop = asyncio.get_event_loop()
+                    try:
+                        await loop.run_in_executor(None, self.iface.close)
+                    except Exception:
+                        pass
+                    self.iface = None
+
+                # Wait a moment
+                await asyncio.sleep(2)
+
+                # Try to reconnect
+                loop = asyncio.get_event_loop()
+                self.iface = await loop.run_in_executor(
+                    None,
+                    lambda: meshtastic.serial_interface.SerialInterface(
+                        devPath=SERIAL_PORT
+                    ),
+                )
+
+                # Re-subscribe to events (important!)
+                pub.subscribe(self.on_connection, "meshtastic.connection.established")
+                pub.subscribe(self.on_disconnect, "meshtastic.connection.lost")
+                pub.subscribe(self.on_receive, "meshtastic.receive")
+
+                # Wait for connection to stabilize
+                await asyncio.sleep(3)
+
+                # Verify connection
+                info = await loop.run_in_executor(None, self.iface.getMyNodeInfo)
+                self.log_system(f"Successfully reconnected: {info['user']['longName']}")
+
+                # Update node info
+                self.my_node_id = info["user"]["id"]
+
+                # Stop reconnecting - we're connected!
+                self.is_reconnecting = False
+                self.reconnect_worker = None
+                return
+
+            except Exception as e:
+                # Log the error and continue the loop (will try again in 30 seconds)
+                self.log_system(
+                    f"Reconnection failed: {e}. Will retry in 30 seconds..."
+                )
+
     async def on_shutdown(self) -> None:
         """Clean up when shutting down."""
+        # Disable auto-reconnect
+        self.auto_reconnect_enabled = False
+        self.is_reconnecting = False
+
+        # Cancel reconnect worker if running
+        if self.reconnect_worker is not None:
+            self.reconnect_worker.cancel()
+            self.reconnect_worker = None
+
         # Unsubscribe from events
         try:
             pub.unsubscribe(self.on_connection, "meshtastic.connection.established")
