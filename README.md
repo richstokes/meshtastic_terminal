@@ -58,6 +58,7 @@ uv sync
 ```
 
 This will:
+
 - Create a virtual environment (if needed)
 - Install all required dependencies
 - Make the scripts available for execution
@@ -69,53 +70,17 @@ This will:
 The recommended way to run these scripts is using `uv run`:
 
 #### Chat Monitor
+
 ```bash
 uv run python chat_monitor.py
 ```
 
 #### Broadcast Until Acked
+
 ```bash
 uv run python broadcast_until_acked.py
-```
-
-### Running with the virtual environment
-
-Alternatively, you can activate the virtual environment and run the scripts directly:
-
-```bash
-# Activate the virtual environment (uv creates it in .venv by default)
-source .venv/bin/activate
-
-# Run the scripts
-python chat_monitor.py
-python broadcast_until_acked.py
-
-# When done, deactivate
-deactivate
 ```
 
 ## Contributing
 
 Feel free to submit issues or pull requests to improve these scripts!
-
-## Useful Commands
-
-```bash
-# Install/sync dependencies
-uv sync
-
-# Run a script
-uv run python chat_monitor.py
-
-# Add a new dependency
-uv add package-name
-
-# Update dependencies
-uv sync --upgrade
-
-# Show installed packages
-uv pip list
-
-# Create a requirements.txt (if needed for compatibility)
-uv pip freeze > requirements.txt
-```
