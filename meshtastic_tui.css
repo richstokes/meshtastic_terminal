@@ -1,0 +1,145 @@
+/* PresetSelectorScreen styles */
+PresetSelectorScreen {
+    align: center middle;
+}
+
+#preset-dialog {
+    width: 60;
+    height: auto;
+    border: thick $background 80%;
+    background: $surface;
+    padding: 1 2;
+}
+
+#preset-title {
+    width: 100%;
+    content-align: center middle;
+    text-style: bold;
+    color: $text;
+    margin-bottom: 1;
+}
+
+#preset-buttons {
+    width: 100%;
+    height: auto;
+    layout: grid;
+    grid-size: 2;
+    grid-gutter: 1;
+    margin-top: 1;
+}
+
+#preset-buttons Button {
+    width: 100%;
+    min-height: 3;
+}
+
+#preset-buttons Button:focus {
+    border: heavy $accent;
+    background: $accent 20%;
+}
+
+/* QuitConfirmScreen styles */
+QuitConfirmScreen {
+    align: center middle;
+}
+
+#quit-dialog {
+    width: 50;
+    height: auto;
+    border: thick $background 80%;
+    background: $surface;
+    padding: 2;
+}
+
+#quit-message {
+    width: 100%;
+    content-align: center middle;
+    text-style: bold;
+    color: $warning;
+    margin-bottom: 2;
+}
+
+#quit-buttons {
+    width: 100%;
+    height: auto;
+    align: center middle;
+}
+
+#quit-buttons Button {
+    margin: 0 1;
+    min-width: 10;
+    min-height: 3;
+}
+
+#quit-buttons Button:focus {
+    border: thick $accent;
+    background: $accent;
+    text-style: bold;
+}
+
+#yes-button {
+    border: solid $error;
+    background: $error 20%;
+}
+
+#yes-button:focus {
+    border: thick $error;
+    background: $error;
+    color: $text;
+    text-style: bold;
+}
+
+#no-button {
+    border: solid $success;
+    background: $success 20%;
+}
+
+#no-button:focus {
+    border: thick $success;
+    background: $success;
+    color: $text;
+    text-style: bold;
+}
+
+/* ChatMonitor main app styles */
+Screen {
+    background: $background;
+}
+
+DataTable {
+    height: 1fr;
+    border: solid $primary;
+}
+
+#input-container {
+    height: auto;
+    display: none;
+    border: solid $accent;
+    padding: 1;
+}
+
+#input-container.visible {
+    display: block;
+}
+
+Input {
+    margin: 0 1;
+}
+
+.system-message {
+    color: $warning;
+}
+
+.error-message {
+    color: $error;
+}
+
+.from-me {
+    color: $success;
+    text-style: bold;
+}
+
+.node-discovery {
+    color: $accent;
+    text-style: italic;
+}

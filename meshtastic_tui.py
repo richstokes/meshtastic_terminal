@@ -27,6 +27,11 @@ from textual.reactive import reactive
 from textual import on
 from textual.screen import ModalScreen
 
+# Load CSS from external file
+CSS_FILE = Path(__file__).parent / "meshtastic_tui.css"
+with open(CSS_FILE, "r") as f:
+    APP_CSS = f.read()
+
 # ====== CONFIG ======
 SERIAL_PORT = None  # set explicitly if needed, e.g. "/dev/ttyUSB0"
 MAX_MESSAGES = 50
@@ -48,47 +53,6 @@ RADIO_PRESETS = {
 
 class PresetSelectorScreen(ModalScreen):
     """Modal screen for selecting radio presets."""
-
-    CSS = """
-    PresetSelectorScreen {
-        align: center middle;
-    }
-
-    #preset-dialog {
-        width: 60;
-        height: auto;
-        border: thick $background 80%;
-        background: $surface;
-        padding: 1 2;
-    }
-
-    #preset-title {
-        width: 100%;
-        content-align: center middle;
-        text-style: bold;
-        color: $text;
-        margin-bottom: 1;
-    }
-
-    #preset-buttons {
-        width: 100%;
-        height: auto;
-        layout: grid;
-        grid-size: 2;
-        grid-gutter: 1;
-        margin-top: 1;
-    }
-
-    #preset-buttons Button {
-        width: 100%;
-        min-height: 3;
-    }
-
-    #preset-buttons Button:focus {
-        border: heavy $accent;
-        background: $accent 20%;
-    }
-    """
 
     BINDINGS = [
         ("escape", "dismiss_dialog", "Cancel"),
@@ -168,70 +132,6 @@ class PresetSelectorScreen(ModalScreen):
 
 class QuitConfirmScreen(ModalScreen):
     """Modal screen to confirm quitting the application."""
-
-    CSS = """
-    QuitConfirmScreen {
-        align: center middle;
-    }
-
-    #quit-dialog {
-        width: 50;
-        height: auto;
-        border: thick $background 80%;
-        background: $surface;
-        padding: 2;
-    }
-
-    #quit-message {
-        width: 100%;
-        content-align: center middle;
-        text-style: bold;
-        color: $warning;
-        margin-bottom: 2;
-    }
-
-    #quit-buttons {
-        width: 100%;
-        height: auto;
-        align: center middle;
-    }
-
-    #quit-buttons Button {
-        margin: 0 1;
-        min-width: 10;
-        min-height: 3;
-    }
-
-    #quit-buttons Button:focus {
-        border: thick $accent;
-        background: $accent;
-        text-style: bold;
-    }
-
-    #yes-button {
-        border: solid $error;
-        background: $error 20%;
-    }
-
-    #yes-button:focus {
-        border: thick $error;
-        background: $error;
-        color: $text;
-        text-style: bold;
-    }
-
-    #no-button {
-        border: solid $success;
-        background: $success 20%;
-    }
-
-    #no-button:focus {
-        border: thick $success;
-        background: $success;
-        color: $text;
-        text-style: bold;
-    }
-    """
 
     BINDINGS = [
         ("y", "confirm_quit", "Yes"),
@@ -317,50 +217,7 @@ class ChatMonitor(App):
 
     TITLE = "Richs Meshtastic Monitor"
     SUB_TITLE = "Nodes: 0"
-
-    CSS = """
-    Screen {
-        background: $background;
-    }
-
-    DataTable {
-        height: 1fr;
-        border: solid $primary;
-    }
-
-    #input-container {
-        height: auto;
-        display: none;
-        border: solid $accent;
-        padding: 1;
-    }
-
-    #input-container.visible {
-        display: block;
-    }
-
-    Input {
-        margin: 0 1;
-    }
-
-    .system-message {
-        color: $warning;
-    }
-
-    .error-message {
-        color: $error;
-    }
-
-    .from-me {
-        color: $success;
-        text-style: bold;
-    }
-    
-    .node-discovery {
-        color: $accent;
-        text-style: italic;
-    }
-    """
+    CSS = APP_CSS
 
     BINDINGS = [
         Binding("s", "send_message", "Send Message", show=True),
