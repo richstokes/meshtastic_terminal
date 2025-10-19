@@ -155,7 +155,9 @@ class ChatMonitor(App):
                             if hasattr(preset_value, "name"):
                                 preset_name = preset_value.name
                             else:
-                                preset_name = preset_names.get(preset_value, f"Unknown ({preset_value})")
+                                preset_name = preset_names.get(
+                                    preset_value, f"Unknown ({preset_value})"
+                                )
                             self.log_system(f"Radio preset: {preset_name}")
 
                         # Also log region if available
@@ -186,7 +188,9 @@ class ChatMonitor(App):
                             if hasattr(region_value, "name"):
                                 region_name = region_value.name
                             else:
-                                region_name = region_names.get(region_value, f"Unknown ({region_value})")
+                                region_name = region_names.get(
+                                    region_value, f"Unknown ({region_value})"
+                                )
                             self.log_system(f"Region: {region_name}")
             except Exception as e:
                 # Don't fail if we can't get radio config
