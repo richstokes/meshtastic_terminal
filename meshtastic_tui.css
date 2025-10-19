@@ -67,7 +67,7 @@ QuitConfirmScreen {
 
 #quit-buttons Button {
     margin: 0 1;
-    min-width: 10;
+    width: 15;
     min-height: 3;
 }
 
@@ -90,13 +90,13 @@ QuitConfirmScreen {
 }
 
 #no-button {
-    border: solid $success;
-    background: $success 20%;
+    border: solid $primary;
+    background: $primary 20%;
 }
 
 #no-button:focus {
-    border: thick $success;
-    background: $success;
+    border: thick $primary;
+    background: $primary;
     color: $text;
     text-style: bold;
 }
