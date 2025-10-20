@@ -5,14 +5,13 @@ A modern terminal UI for monitoring Meshtastic messages and sending replies.
 
 Features:
 - Real-time message display with timestamps
-- Node discovery tracking with persistence
+- Node discovery tracking from device
 - Radio configuration display (preset/region)
 - Live node counter in header
 
 Press 's' to send a message, Ctrl+Q to quit, ESC to cancel input.
 """
 import asyncio
-import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -40,7 +39,6 @@ with open(CSS_FILE, "r") as f:
 # ====== CONFIG ======
 SERIAL_PORT = None  # set explicitly if needed, e.g. "/dev/ttyUSB0"
 MAX_MESSAGES = 500
-NODES_FILE = Path("meshtastic_nodes.json")
 # ====================
 
 
@@ -79,7 +77,6 @@ class ChatMonitor(App):
         self.auto_reconnect_enabled = True  # Enable automatic reconnection
         self.reconnect_worker = None  # Track the reconnect worker
         self.stats_worker = None  # Track the stats update worker
-        self.load_known_nodes()
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
@@ -136,25 +133,6 @@ class ChatMonitor(App):
         # Connect to device in the background
         self.run_worker(self.connect_device(), exclusive=True)
 
-    def load_known_nodes(self) -> None:
-        """Load previously seen nodes from JSON file."""
-        try:
-            if NODES_FILE.exists():
-                with open(NODES_FILE, "r") as f:
-                    self.known_nodes = json.load(f)
-        except Exception as e:
-            # If we can't load, start with empty dict
-            self.known_nodes = {}
-
-    def save_known_nodes(self) -> None:
-        """Save known nodes to JSON file."""
-        try:
-            with open(NODES_FILE, "w") as f:
-                json.dump(self.known_nodes, f, indent=2)
-        except Exception as e:
-            # Log error but don't crash
-            pass
-
     def subscribe_to_events(self) -> None:
         """Subscribe to pub/sub events (unsubscribes first to avoid duplicates)."""
         try:
@@ -191,9 +169,6 @@ class ChatMonitor(App):
             ),
         }
 
-        # Save to disk
-        self.save_known_nodes()
-
         # Update node count
         self.node_count = len(self.known_nodes)
 
@@ -228,12 +203,6 @@ class ChatMonitor(App):
             # Register our own node
             self.register_node(self.my_node_id, info["user"].get("longName"))
 
-            # Print initial node count
-            initial_count = len(self.known_nodes)
-            self.log_system(
-                f"Tracking {initial_count} node{'s' if initial_count != 1 else ''}"
-            )
-
             # Load existing nodes from the device's node database
             try:
                 if hasattr(self.iface, "nodes") and self.iface.nodes:
@@ -246,20 +215,21 @@ class ChatMonitor(App):
                                 or user_info.get("shortName")
                                 or node_id
                             )
-                            # Register without triggering discovery event
-                            if node_id not in self.known_nodes:
-                                self.known_nodes[node_id] = {
-                                    "name": node_name,
-                                    "last_seen": datetime.now().isoformat(),
-                                    "first_seen": datetime.now().isoformat(),
-                                }
-                                node_count += 1
-                    if node_count > 0:
-                        self.save_known_nodes()
-                        self.node_count = len(self.known_nodes)
-                        self.log_system(f"Loaded {node_count} known nodes from device")
+                            # Register node from device database
+                            self.known_nodes[node_id] = {
+                                "name": node_name,
+                                "last_seen": datetime.now().isoformat(),
+                                "first_seen": datetime.now().isoformat(),
+                            }
+                            node_count += 1
+
+                    self.node_count = len(self.known_nodes)
+                    self.log_system(
+                        f"Loaded {node_count} node{'s' if node_count != 1 else ''} from device"
+                    )
             except Exception as e:
                 # Don't fail if we can't load nodes
+                self.log_system("Unable to load nodes from device")
                 pass
 
             # Log radio configuration
