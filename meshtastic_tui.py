@@ -61,6 +61,9 @@ class ChatMonitor(App):
     messages: reactive[list] = reactive(list)
     input_mode: reactive[bool] = reactive(False)
     node_count: reactive[int] = reactive(0)
+    channel_util: reactive[float] = reactive(0.0)
+    battery_level: reactive[int] = reactive(0)
+    voltage: reactive[float] = reactive(0.0)
 
     def __init__(self):
         super().__init__()
@@ -75,6 +78,7 @@ class ChatMonitor(App):
         self.is_reconnecting = False  # Track if we're in reconnection state
         self.auto_reconnect_enabled = True  # Enable automatic reconnection
         self.reconnect_worker = None  # Track the reconnect worker
+        self.stats_worker = None  # Track the stats update worker
         self.load_known_nodes()
 
     def compose(self) -> ComposeResult:
@@ -88,7 +92,35 @@ class ChatMonitor(App):
 
     def watch_node_count(self, node_count: int) -> None:
         """Update subtitle when node count changes."""
-        self.sub_title = f"Nodes: {node_count}"
+        self.update_subtitle()
+
+    def watch_channel_util(self, channel_util: float) -> None:
+        """Update subtitle when channel utilization changes."""
+        self.update_subtitle()
+
+    def watch_battery_level(self, battery_level: int) -> None:
+        """Update subtitle when battery level changes."""
+        self.update_subtitle()
+
+    def watch_voltage(self, voltage: float) -> None:
+        """Update subtitle when voltage changes."""
+        self.update_subtitle()
+
+    def update_subtitle(self) -> None:
+        """Update the subtitle with current stats."""
+        parts = [f"Nodes: {self.node_count}"]
+
+        if self.channel_util > 0:
+            parts.append(f"ChUtil: {self.channel_util:.1f}%")
+
+        if self.battery_level > 100:
+            parts.append("PWRD")
+        elif self.battery_level > 0:
+            parts.append(f"Batt: {self.battery_level}%")
+        elif self.voltage > 0:
+            parts.append(f"Volt: {self.voltage:.2f}V")
+
+        self.sub_title = " | ".join(parts)
 
     def on_mount(self) -> None:
         """Set up the app when mounted."""
@@ -302,6 +334,11 @@ class ChatMonitor(App):
                 # Don't fail if we can't get radio config
                 pass
 
+            # Start periodic stats update
+            self.stats_worker = self.run_worker(
+                self.update_stats_loop(), exclusive=False
+            )
+
         except Exception as e:
             self.log_system(f"FATAL: Could not connect: {e}", error=True)
 
@@ -367,6 +404,26 @@ class ChatMonitor(App):
             if is_new:
                 display_name = node_name or from_id
                 self.log_node_discovery(from_id, display_name)
+
+        # Handle telemetry packets from our own node
+        if portnum == "TELEMETRY_APP" and from_id == self.my_node_id:
+            try:
+                telemetry = decoded.get("telemetry", {})
+
+                # Device metrics (battery, voltage, etc.)
+                if "deviceMetrics" in telemetry:
+                    metrics = telemetry["deviceMetrics"]
+                    if "batteryLevel" in metrics and metrics["batteryLevel"] > 0:
+                        self.battery_level = metrics["batteryLevel"]
+                    if "voltage" in metrics and metrics["voltage"] > 0:
+                        self.voltage = metrics["voltage"]
+                    if "channelUtilization" in metrics:
+                        self.channel_util = metrics["channelUtilization"]
+
+                # Air quality or environment metrics if available
+                # Can add more telemetry types here as needed
+            except Exception:
+                pass  # Ignore telemetry parsing errors
 
         # Skip non-text message types
         ignored_types = [
@@ -833,16 +890,61 @@ class ChatMonitor(App):
                     f"Reconnection failed: {e}. Will retry in 30 seconds..."
                 )
 
+    async def update_stats_loop(self) -> None:
+        """Periodically update device statistics."""
+        while True:
+            try:
+                # Wait 30 seconds between updates
+                await asyncio.sleep(30)
+
+                # Skip if not connected
+                if not self.iface or not self.iface.localNode:
+                    continue
+
+                # Get device metrics from the local node
+                loop = asyncio.get_event_loop()
+
+                def get_metrics():
+                    try:
+                        if hasattr(self.iface.localNode, "deviceMetrics"):
+                            return self.iface.localNode.deviceMetrics
+                        # Alternatively, try to get from localConfig
+                        return None
+                    except Exception:
+                        return None
+
+                metrics = await loop.run_in_executor(None, get_metrics)
+
+                if metrics:
+                    # Update battery and voltage if available
+                    if hasattr(metrics, "batteryLevel") and metrics.batteryLevel > 0:
+                        self.battery_level = metrics.batteryLevel
+                    if hasattr(metrics, "voltage") and metrics.voltage > 0:
+                        self.voltage = metrics.voltage
+                    if hasattr(metrics, "channelUtilization"):
+                        self.channel_util = metrics.channelUtilization
+
+            except asyncio.CancelledError:
+                # Worker cancelled, exit cleanly
+                break
+            except Exception:
+                # Ignore errors, will retry on next iteration
+                pass
+
     async def on_shutdown(self) -> None:
         """Clean up when shutting down."""
         # Disable auto-reconnect
         self.auto_reconnect_enabled = False
         self.is_reconnecting = False
 
-        # Cancel reconnect worker if running
+        # Cancel workers if running
         if self.reconnect_worker is not None:
             self.reconnect_worker.cancel()
             self.reconnect_worker = None
+
+        if self.stats_worker is not None:
+            self.stats_worker.cancel()
+            self.stats_worker = None
 
         # Unsubscribe from events
         try:
