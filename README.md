@@ -19,7 +19,7 @@ A modern terminal UI for monitoring Meshtastic messages in real-time with the ab
 - Press Ctrl+Q to quit
 - Press ESC to cancel message input
 - Automatic message history with configurable limits
-- Ability to switch radio presets/modes on the fly
+- Ability to switch radio presets/modes and frequency slots on the fly
 - Theme support via CSS
 
 ### 2. Broadcast Until Acked (`broadcast_until_acked.py`)
