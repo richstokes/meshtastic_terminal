@@ -542,12 +542,14 @@ class ChatMonitor(App):
         input_widget = self.query_one("#user-input", Input)
         input_widget.value = ""
 
-    def on_input_key(self, event) -> None:
-        """Handle key events in input mode."""
-        # ESC to cancel
-        if event.key == "escape" and self.input_mode:
+    def on_key(self, event) -> None:
+        """Handle key events globally."""
+        # ESC or Ctrl+C to cancel input mode
+        if (event.key == "escape" or event.key == "ctrl+c") and self.input_mode:
             self.log_system("Message input cancelled")
             self.cancel_input()
+            event.prevent_default()
+            event.stop()
 
     def action_change_preset(self) -> None:
         """Show the preset selector dialog."""
