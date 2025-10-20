@@ -14,10 +14,9 @@ A modern terminal UI for monitoring Meshtastic messages in real-time with the ab
 - Interactive UI using Textual framework
 - Node discovery tracking with persistence
 - Radio configuration display (preset/region)
-- Live node counter in header
+- Live node counter in header, plus other stats
 - Press 's' to send a message
-- Press Ctrl+Q to quit
-- Press ESC to cancel message input
+- Press 'q' to quit
 - Automatic message history with configurable limits
 - Ability to switch radio presets/modes and frequency slots on the fly
 - Theme support via CSS
