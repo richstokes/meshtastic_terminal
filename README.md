@@ -1,15 +1,15 @@
-# Meshtastic Scripts
+# Meshtastic Terminal
 
-A collection of scripts for playing with Meshtastic devices. These scripts allow you to monitor chat messages, broadcast messages with acknowledgment tracking, and interact with Meshtastic mesh networks.
+A terminal interface for chatting via Meshtastic.
 
 ![Meshtastic TUI Screenshot](images/screenshot1.png)
 
-## Scripts
+## Overview
 
-### 1. Meshtastic TUI (`meshtastic_tui.py`)
-A modern terminal UI for monitoring Meshtastic messages in real-time with the ability to send messages.
+Meshtastic Terminal is a modern terminal UI for real-time communication over Meshtastic mesh networks. Monitor messages, send texts, and manage your mesh network directly from your terminal.
 
-**Features:**
+## Features
+
 - Real-time message display with timestamps
 - Interactive UI using Textual framework
 - Node discovery tracking with persistence
@@ -19,16 +19,8 @@ A modern terminal UI for monitoring Meshtastic messages in real-time with the ab
 - Press 'q' to quit
 - Automatic message history with configurable limits
 - Ability to switch radio presets/modes and frequency slots on the fly
-- Theme support via CSS
+- Theme support - press ctrl+p to open the theme selector
 
-### 2. Broadcast Until Acked (`broadcast_until_acked.py`)
-Sends messages to Meshtastic nodes and monitors for acknowledgments. Runs in a loop until an acknowledgment is received. Use sparingly to avoid flooding the network.
-
-**Features:**
-- Configurable destination (broadcast or specific node)
-- Automatic retry with configurable intervals
-- Packet monitoring and acknowledgment tracking
-- Detailed logging of send/receive events
 
 ## Prerequisites
 
@@ -55,8 +47,8 @@ For other installation methods, see [uv documentation](https://github.com/astral
 ### 2. Clone or download this repository
 
 ```bash
-gh repo clone richstokes/meshtastic_scripts
-cd meshtastic_scripts
+gh repo clone richstokes/meshtastic_terminal
+cd meshtastic_terminal
 ```
 
 ### 3. Install dependencies with uv
@@ -73,21 +65,21 @@ This will:
 
 ## Usage
 
-### Running with uv
+### Running Meshtastic Terminal
 
-The recommended way to run these scripts is using `uv run`:
-
-#### Meshtastic TUI
+The recommended way to run the terminal interface is using `uv run`:
 
 ```bash
 uv run python meshtastic_tui.py
 ```
 
-#### Broadcast Until Acked
+Once running:
 
-```bash
-uv run python broadcast_until_acked.py
-```
+- Messages will appear in real-time
+- Press 's' to send a message
+- Press 'q' to quit
+- Use preset and frequency slot selectors to adjust radio settings
+
 
 ## Contributing
 

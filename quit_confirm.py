@@ -11,6 +11,7 @@ class QuitConfirmScreen(ModalScreen):
 
     BINDINGS = [
         ("y", "confirm_quit", "Yes"),
+        ("q", "confirm_quit", ""),  # Allow 'q' to confirm but don't show in footer
         ("n", "cancel_quit", "No"),
         ("escape", "cancel_quit", "Cancel"),
         ("enter", "select_button", "Select"),
