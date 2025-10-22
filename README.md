@@ -73,14 +73,6 @@ The recommended way to run the terminal interface is using `uv run`:
 uv run python meshtastic_tui.py
 ```
 
-Once running:
-
-- Messages will appear in real-time
-- Press 's' to send a message
-- Press 'q' to quit
-- Use preset and frequency slot selectors to adjust radio settings
-
-
 ## Contributing
 
 Feel free to submit issues or pull requests to improve these scripts!
