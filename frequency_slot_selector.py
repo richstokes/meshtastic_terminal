@@ -26,14 +26,19 @@ class FrequencySlotSelectorScreen(ModalScreen):
     def compose(self) -> ComposeResult:
         """Create the frequency slot selector dialog."""
         with Container(id="frequency-dialog"):
-            current_text = (
-                f" (Current: {self.current_slot})"
-                if self.current_slot is not None
-                else ""
-            )
+            if self.current_slot is not None:
+                slot_display = (
+                    f"{self.current_slot} (auto)"
+                    if self.current_slot == 0
+                    else str(self.current_slot)
+                )
+                current_text = f" (Current: {slot_display})"
+            else:
+                current_text = ""
             yield Label(f"Select Frequency Slot{current_text}", id="frequency-title")
             yield Label(
-                "Valid slots: 0-83 (depends on region)", id="frequency-subtitle"
+                "Valid slots: 0-83 (depends on region). Slot 0 = auto",
+                id="frequency-subtitle",
             )
             with Container(id="frequency-input-container"):
                 yield Input(

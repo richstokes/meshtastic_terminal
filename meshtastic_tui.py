@@ -45,7 +45,7 @@ MAX_MESSAGES = 500
 class ChatMonitor(App):
     """A Textual app for monitoring Meshtastic messages."""
 
-    TITLE = "Meshtastic Monitor"
+    TITLE = "Meshtastic Terminal"
     SUB_TITLE = "Nodes: 0"
     CSS = APP_CSS
 
@@ -266,7 +266,12 @@ class ChatMonitor(App):
                         if hasattr(lora_config, "channel_num"):
                             channel_num = lora_config.channel_num
                             self.current_frequency_slot = channel_num
-                            self.log_system(f"Frequency slot: {channel_num}")
+                            slot_display = (
+                                f"{channel_num} (auto)"
+                                if channel_num == 0
+                                else str(channel_num)
+                            )
+                            self.log_system(f"Frequency slot: {slot_display}")
 
                         # Also log region if available
                         if hasattr(lora_config, "region"):
@@ -680,7 +685,8 @@ class ChatMonitor(App):
             )
             return
 
-        self.log_system(f"Changing frequency slot to {slot}...")
+        slot_display = f"{slot} (auto)" if slot == 0 else str(slot)
+        self.log_system(f"Changing frequency slot to {slot_display}...")
 
         try:
             loop = asyncio.get_event_loop()
@@ -707,8 +713,9 @@ class ChatMonitor(App):
             success = await loop.run_in_executor(None, set_slot)
 
             if success:
+                slot_display = f"{slot} (auto)" if slot == 0 else str(slot)
                 self.log_system(
-                    f"Frequency slot changed to {slot}. Device will reboot..."
+                    f"Frequency slot changed to {slot_display}. Device will reboot..."
                 )
                 self.current_frequency_slot = slot
                 self.is_reconnecting = True
