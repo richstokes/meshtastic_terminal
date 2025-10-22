@@ -62,6 +62,7 @@ class ChatMonitor(App):
     channel_util: reactive[float] = reactive(0.0)
     battery_level: reactive[int] = reactive(0)
     voltage: reactive[float] = reactive(0.0)
+    is_connected: reactive[bool] = reactive(False)
 
     def __init__(self):
         super().__init__()
@@ -104,6 +105,10 @@ class ChatMonitor(App):
         """Update subtitle when voltage changes."""
         self.update_subtitle()
 
+    def watch_is_connected(self, is_connected: bool) -> None:
+        """Update bindings when connection state changes."""
+        self.refresh_bindings()
+
     def update_subtitle(self) -> None:
         """Update the subtitle with current stats."""
         parts = [f"Nodes: {self.node_count}"]
@@ -133,6 +138,14 @@ class ChatMonitor(App):
 
         # Connect to device in the background
         self.run_worker(self.connect_device(), exclusive=True)
+
+    def check_action_state(self, action: str) -> bool:
+        """Check if an action should be enabled based on connection state."""
+        # Disable preset and frequency slot changes when not connected
+        if action in ("change_preset", "change_frequency_slot", "send_message"):
+            return self.is_connected
+        # All other actions are always enabled
+        return True
 
     def subscribe_to_events(self) -> None:
         """Subscribe to pub/sub events (unsubscribes first to avoid duplicates)."""
@@ -327,6 +340,9 @@ class ChatMonitor(App):
                 f"Connected: {node['user']['shortName']} ({self.my_node_id})"
             )
 
+            # Mark as connected
+            self.is_connected = True
+
             # Stop any auto-reconnect attempts since we're now connected
             if self.is_reconnecting:
                 self.is_reconnecting = False
@@ -347,6 +363,7 @@ class ChatMonitor(App):
             return
 
         self.is_disconnecting = True
+        self.is_connected = False  # Mark as disconnected
         self.log_system("Disconnected from device", error=True)
 
         # Close the existing interface to prevent automatic reconnection
@@ -658,11 +675,6 @@ class ChatMonitor(App):
                 try:
                     node = self.iface.localNode
                     if node:
-                        # Ensure we have the lora config
-                        if len(node.localConfig.ListFields()) == 0:
-                            node.requestConfig(
-                                node.localConfig.DESCRIPTOR.fields_by_name.get("lora")
-                            )
                         # Set the modem preset value
                         node.localConfig.lora.modem_preset = preset_value
                         # Write the config to the device
@@ -713,11 +725,6 @@ class ChatMonitor(App):
                 try:
                     node = self.iface.localNode
                     if node:
-                        # Ensure we have the lora config
-                        if len(node.localConfig.ListFields()) == 0:
-                            node.requestConfig(
-                                node.localConfig.DESCRIPTOR.fields_by_name.get("lora")
-                            )
                         # Set the channel_num value
                         node.localConfig.lora.channel_num = slot
                         # Write the config to the device
@@ -817,6 +824,7 @@ class ChatMonitor(App):
                 self.is_disconnecting = (
                     False  # Reset disconnect flag on successful reconnect
                 )
+                self.is_connected = True  # Mark as connected
                 return
 
             except Exception as e:
@@ -881,6 +889,7 @@ class ChatMonitor(App):
                 self.is_disconnecting = (
                     False  # Reset disconnect flag on successful reconnect
                 )
+                self.is_connected = True  # Mark as connected
                 self.reconnect_worker = None
                 return
 
@@ -891,7 +900,7 @@ class ChatMonitor(App):
                 )
 
     async def update_stats_loop(self) -> None:
-        """Periodically update device statistics."""
+        """Periodically request device telemetry."""
         while True:
             try:
                 # Wait 30 seconds between updates
@@ -901,28 +910,24 @@ class ChatMonitor(App):
                 if not self.iface or not self.iface.localNode:
                     continue
 
-                # Get device metrics from the local node
+                # Request telemetry from the device
+                # This will trigger a TELEMETRY_APP packet to be sent
+                # which will be handled by on_receive
                 loop = asyncio.get_event_loop()
 
-                def get_metrics():
+                def request_telemetry():
                     try:
-                        if hasattr(self.iface.localNode, "deviceMetrics"):
-                            return self.iface.localNode.deviceMetrics
-                        # Alternatively, try to get from localConfig
-                        return None
+                        # Request device metrics telemetry
+                        self.iface.sendTelemetry(
+                            destinationId=self.my_node_id or "^local",
+                            wantResponse=False,
+                            channelIndex=0,
+                            telemetryType="device_metrics",
+                        )
                     except Exception:
-                        return None
+                        pass
 
-                metrics = await loop.run_in_executor(None, get_metrics)
-
-                if metrics:
-                    # Update battery and voltage if available
-                    if hasattr(metrics, "batteryLevel") and metrics.batteryLevel > 0:
-                        self.battery_level = metrics.batteryLevel
-                    if hasattr(metrics, "voltage") and metrics.voltage > 0:
-                        self.voltage = metrics.voltage
-                    if hasattr(metrics, "channelUtilization"):
-                        self.channel_util = metrics.channelUtilization
+                await loop.run_in_executor(None, request_telemetry)
 
             except asyncio.CancelledError:
                 # Worker cancelled, exit cleanly
