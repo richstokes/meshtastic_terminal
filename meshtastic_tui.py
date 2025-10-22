@@ -74,6 +74,7 @@ class ChatMonitor(App):
         self.current_preset = None  # Track current radio preset
         self.current_frequency_slot = None  # Track current frequency slot
         self.is_reconnecting = False  # Track if we're in reconnection state
+        self.is_disconnecting = False  # Track if we're currently handling a disconnect
         self.auto_reconnect_enabled = True  # Enable automatic reconnection
         self.reconnect_worker = None  # Track the reconnect worker
         self.stats_worker = None  # Track the stats update worker
@@ -333,11 +334,19 @@ class ChatMonitor(App):
                     self.reconnect_worker.cancel()
                     self.reconnect_worker = None
 
+            # Reset disconnecting flag on successful connection
+            self.is_disconnecting = False
+
         except Exception as e:
             self.log_system(f"Connection warning: {e}")
 
     def on_disconnect(self, interface=None, topic=pub.AUTO_TOPIC):
         """Handle disconnection event."""
+        # Prevent duplicate disconnect handling
+        if self.is_disconnecting:
+            return
+
+        self.is_disconnecting = True
         self.log_system("Disconnected from device", error=True)
 
         # Close the existing interface to prevent automatic reconnection
@@ -359,6 +368,14 @@ class ChatMonitor(App):
             self.reconnect_worker = self.run_worker(
                 self.auto_reconnect_loop(), exclusive=False
             )
+
+        # Reset the disconnecting flag after a short delay to allow re-detection if needed
+        asyncio.create_task(self._reset_disconnect_flag())
+
+    async def _reset_disconnect_flag(self) -> None:
+        """Reset the disconnecting flag after a brief delay."""
+        await asyncio.sleep(2)
+        self.is_disconnecting = False
 
     def on_receive(self, packet, interface):
         """Monitor received packets."""
@@ -797,6 +814,9 @@ class ChatMonitor(App):
                     pass
 
                 self.is_reconnecting = False
+                self.is_disconnecting = (
+                    False  # Reset disconnect flag on successful reconnect
+                )
                 return
 
             except Exception as e:
@@ -858,6 +878,9 @@ class ChatMonitor(App):
 
                 # Stop reconnecting - we're connected!
                 self.is_reconnecting = False
+                self.is_disconnecting = (
+                    False  # Reset disconnect flag on successful reconnect
+                )
                 self.reconnect_worker = None
                 return
 
