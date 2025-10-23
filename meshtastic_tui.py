@@ -380,7 +380,7 @@ class ChatMonitor(App):
 
         # Start auto-reconnect if enabled and not already reconnecting
         if self.auto_reconnect_enabled and not self.is_reconnecting:
-            self.log_system("Will attempt to reconnect in 30 seconds...")
+            self.log_system("Will attempt to reconnect in 15 seconds...")
             self.is_reconnecting = True
             # Cancel any existing reconnect worker
             if self.reconnect_worker is not None:
@@ -911,11 +911,11 @@ class ChatMonitor(App):
                     self.is_reconnecting = False
 
     async def auto_reconnect_loop(self) -> None:
-        """Automatically attempt to reconnect every 30 seconds after disconnect."""
+        """Automatically attempt to reconnect every 15 seconds after disconnect."""
         while self.is_reconnecting and self.auto_reconnect_enabled:
             try:
-                # Wait 30 seconds before attempting reconnect
-                await asyncio.sleep(30)
+                # Wait 15 seconds before attempting reconnect
+                await asyncio.sleep(15)
 
                 # Check if we should stop (might have been cancelled or connected elsewhere)
                 if not self.auto_reconnect_enabled or not self.is_reconnecting:
@@ -969,9 +969,9 @@ class ChatMonitor(App):
                 return
 
             except Exception as e:
-                # Log the error and continue the loop (will try again in 30 seconds)
+                # Log the error and continue the loop (will try again in 15 seconds)
                 self.log_system(
-                    f"Reconnection failed: {e}. Will retry in 30 seconds..."
+                    f"Reconnection failed: {e}. Will retry in 15 seconds..."
                 )
 
     async def update_stats_loop(self) -> None:
