@@ -20,6 +20,7 @@ from modals import (
     RADIO_PRESETS,
     FrequencySlotSelectorScreen,
     QuitConfirmScreen,
+    UserNameSetterScreen,
 )
 
 # Load CSS from external file
@@ -44,6 +45,7 @@ class ChatMonitor(App):
         Binding("s", "send_message", "Send Message", show=True),
         Binding("ctrl+m", "change_preset", "Change Preset", show=True),
         Binding("ctrl+f", "change_frequency_slot", "Change Freq Slot", show=True),
+        Binding("ctrl+u", "set_user_name", "Set User Name", show=True),
         Binding("q", "request_quit", "Quit", show=True),
     ]
 
@@ -65,6 +67,8 @@ class ChatMonitor(App):
         self.known_nodes = {}  # Track nodes we've seen: {node_id: {name, last_seen}}
         self.current_preset = None  # Track current radio preset
         self.current_frequency_slot = None  # Track current frequency slot
+        self.current_long_name = ""  # Track current long name
+        self.current_short_name = ""  # Track current short name
         self.is_reconnecting = False  # Track if we're in reconnection state
         self.is_disconnecting = False  # Track if we're currently handling a disconnect
         self.auto_reconnect_enabled = True  # Enable automatic reconnection
@@ -133,7 +137,12 @@ class ChatMonitor(App):
     def check_action_state(self, action: str) -> bool:
         """Check if an action should be enabled based on connection state."""
         # Disable preset and frequency slot changes when not connected
-        if action in ("change_preset", "change_frequency_slot", "send_message"):
+        if action in (
+            "change_preset",
+            "change_frequency_slot",
+            "send_message",
+            "set_user_name",
+        ):
             return self.is_connected
         # All other actions are always enabled
         return True
@@ -204,6 +213,10 @@ class ChatMonitor(App):
             # Get node info
             info = await loop.run_in_executor(None, self.iface.getMyNodeInfo)
             self.log_system(f"Ready: {info['user']['longName']}")
+
+            # Store current user names
+            self.current_long_name = info["user"].get("longName", "")
+            self.current_short_name = info["user"].get("shortName", "")
 
             # Register our own node
             self.register_node(self.my_node_id, info["user"].get("longName"))
@@ -651,6 +664,74 @@ class ChatMonitor(App):
                 self.exit()
 
         self.push_screen(QuitConfirmScreen(), handle_quit_response)
+
+    def action_set_user_name(self) -> None:
+        """Show the user name setter dialog."""
+        if not self.iface:
+            self.log_system("Not connected to device", error=True)
+            return
+
+        def handle_user_name_response(result: tuple | None) -> None:
+            """Handle the user name setter response."""
+            if result:
+                long_name, short_name = result
+                self.run_worker(
+                    self.set_user_names(long_name, short_name), exclusive=False
+                )
+
+        self.push_screen(
+            UserNameSetterScreen(self.current_long_name, self.current_short_name),
+            handle_user_name_response,
+        )
+
+    async def set_user_names(self, long_name: str, short_name: str) -> None:
+        """Set the user long name and short name."""
+        if not long_name and not short_name:
+            self.log_system("Both names are empty, no changes made")
+            return
+
+        self.log_system(f"Setting user names...")
+
+        try:
+            loop = asyncio.get_event_loop()
+
+            # Set the user names using the correct API
+            def set_names():
+                try:
+                    node = self.iface.localNode
+                    if node:
+                        # Use setOwner method to set both long and short names
+                        node.setOwner(
+                            long_name=long_name if long_name else None,
+                            short_name=short_name if short_name else None,
+                        )
+                        return True
+                    return False
+                except Exception as e:
+                    raise e
+
+            success = await loop.run_in_executor(None, set_names)
+
+            if success:
+                # Update our stored values
+                if long_name:
+                    self.current_long_name = long_name
+                if short_name:
+                    self.current_short_name = short_name
+
+                display_parts = []
+                if long_name:
+                    display_parts.append(f"Long: '{long_name}'")
+                if short_name:
+                    display_parts.append(f"Short: '{short_name}'")
+
+                self.log_system(f"User names updated: {', '.join(display_parts)}")
+                self.log_system("Device will reboot to apply changes...")
+            else:
+                self.log_system("Failed to set user names", error=True)
+
+        except Exception as e:
+            self.log_system(f"Error setting user names: {e}", error=True)
 
     async def change_radio_preset(self, preset_name: str) -> None:
         """Change the radio preset and handle device reboot."""

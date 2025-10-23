@@ -182,6 +182,88 @@ FrequencySlotSelectorScreen {
     text-style: bold;
 }
 
+/* UserNameSetterScreen styles */
+UserNameSetterScreen {
+    align: center middle;
+}
+
+#username-dialog {
+    width: 60;
+    height: auto;
+    border: thick $background 80%;
+    background: $surface;
+    padding: 1 2;
+}
+
+#username-title {
+    width: 100%;
+    content-align: center middle;
+    text-style: bold;
+    color: $text;
+    margin-bottom: 1;
+}
+
+#username-form {
+    width: 100%;
+    height: auto;
+    margin-top: 1;
+}
+
+#username-form .input-label {
+    width: 100%;
+    color: $text;
+    margin-top: 1;
+    margin-bottom: 0;
+}
+
+#username-form Input {
+    width: 100%;
+    margin-bottom: 1;
+}
+
+#username-buttons {
+    width: 100%;
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+#username-buttons Button {
+    margin: 0 1;
+    width: 15;
+    min-height: 3;
+}
+
+#username-buttons Button:focus {
+    border: thick $accent;
+    background: $accent;
+    text-style: bold;
+}
+
+#save-button {
+    border: solid $primary;
+    background: $primary 20%;
+}
+
+#save-button:focus {
+    border: thick $primary;
+    background: $primary;
+    color: $text;
+    text-style: bold;
+}
+
+#cancel-button {
+    border: solid $error;
+    background: $error 20%;
+}
+
+#cancel-button:focus {
+    border: thick $error;
+    background: $error;
+    color: $text;
+    text-style: bold;
+}
+
 /* ChatMonitor main app styles */
 Screen {
     background: $background;
