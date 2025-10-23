@@ -28,16 +28,28 @@ Meshtastic Terminal is a modern terminal UI for real-time communication over Mes
 - A Meshtastic device connected via USB/serial
 - [uv](https://github.com/astral-sh/uv) - Fast Python package installer and resolver
 
+## Quickstart
+
+If you have `uv` installed, you can run Meshtastic Terminal directly without cloning:
+
+```bash
+uvx --from "git+https://github.com/richstokes/meshtastic_terminal.git" meshtastic-tui
+```
+
+This will automatically download, install dependencies, and run the application in one command!
+
 ## Installation
 
 ### 1. Install uv (if not already installed)
 
 On macOS/Linux:
+
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 Or using Homebrew:
+
 ```bash
 brew install uv
 ```
