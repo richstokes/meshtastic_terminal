@@ -475,7 +475,7 @@ wheels = [
 ]
 
 [[package]]
-name = "meshtastic-scripts"
+name = "meshtastic-terminal"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

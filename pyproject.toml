@@ -1,10 +1,22 @@
 [project]
-name = "meshtastic-scripts"
+name = "meshtastic-terminal"
 version = "0.1.0"
-description = "Collection of Meshtastic utility scripts for monitoring and broadcasting messages"
+description = "A modern terminal UI for real-time communication over Meshtastic mesh networks"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = ["meshtastic>=2.0.0", "pypubsub>=4.0.3", "textual>=0.47.0"]
+keywords = ["meshtastic", "terminal", "tui", "mesh", "radio", "lora"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Topic :: Communications :: Ham Radio",
+    "Topic :: System :: Networking",
+    "Programming Language :: Python :: 3",
+]
+
+[project.scripts]
+meshtastic-tui = "meshtastic_tui:main"
 
 [build-system]
 requires = ["hatchling"]
