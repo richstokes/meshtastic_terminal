@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-"""
-Meshtastic TUI
-A modern terminal UI for monitoring Meshtastic messages and sending replies.
-
-Features:
-- Real-time message display with timestamps
-- Node discovery tracking from device
-- Radio configuration display (preset/region)
-- Live node counter in header
-
-Press 's' to send a message, Ctrl+Q to quit, ESC to cancel input.
-"""
 import asyncio
 from datetime import datetime
 from pathlib import Path
@@ -27,9 +15,12 @@ from textual import on
 from textual.screen import ModalScreen
 
 # Import modal screens
-from preset_selector import PresetSelectorScreen, RADIO_PRESETS
-from frequency_slot_selector import FrequencySlotSelectorScreen
-from quit_confirm import QuitConfirmScreen
+from modals import (
+    PresetSelectorScreen,
+    RADIO_PRESETS,
+    FrequencySlotSelectorScreen,
+    QuitConfirmScreen,
+)
 
 # Load CSS from external file
 CSS_FILE = Path(__file__).parent / "meshtastic_tui.css"
@@ -434,10 +425,13 @@ class ChatMonitor(App):
             except Exception:
                 pass  # Ignore telemetry parsing errors
 
-        # Skip non-text message types
+            # Return early after handling telemetry - don't process as text message
+            return
+
+        # Skip non-text message types (these are handled above or not needed)
         ignored_types = [
             "POSITION_APP",
-            "TELEMETRY_APP",
+            "TELEMETRY_APP",  # Already handled above
             "ROUTING_APP",
             "ADMIN_APP",
             "unknown",
@@ -911,8 +905,8 @@ class ChatMonitor(App):
                     continue
 
                 # Request telemetry from the device
-                # This will trigger a TELEMETRY_APP packet to be sent
-                # which will be handled by on_receive
+                # This triggers a TELEMETRY_APP packet that will be received
+                # and processed by on_receive() to update battery/voltage/channel_util
                 loop = asyncio.get_event_loop()
 
                 def request_telemetry():
