@@ -489,7 +489,11 @@ class ChatMonitor(App):
         from_style = "from-me" if from_id == self.my_node_id else ""
         to_style = "from-me" if to_id == self.my_node_id else ""
 
-        table.add_row(timestamp, from_id, to_id, content)
+        # Get display names from known_nodes or fall back to node IDs
+        from_display = self.known_nodes.get(from_id, {}).get("name", from_id)
+        to_display = self.known_nodes.get(to_id, {}).get("name", to_id)
+
+        table.add_row(timestamp, from_display, to_display, content)
 
         # Keep only last MAX_MESSAGES
         if table.row_count > MAX_MESSAGES:
