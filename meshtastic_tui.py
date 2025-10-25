@@ -999,9 +999,7 @@ class ChatMonitor(App):
                 )
 
                 # Re-subscribe to events (important!)
-                pub.subscribe(self.on_connection, "meshtastic.connection.established")
-                pub.subscribe(self.on_disconnect, "meshtastic.connection.lost")
-                pub.subscribe(self.on_receive, "meshtastic.receive")
+                self.subscribe_to_events()
 
                 # Wait for connection to stabilize
                 await asyncio.sleep(3)
