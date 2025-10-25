@@ -21,6 +21,7 @@ from modals import (
     FrequencySlotSelectorScreen,
     QuitConfirmScreen,
     UserNameSetterScreen,
+    UserSelectorScreen,
 )
 
 # Load CSS from external file
@@ -43,6 +44,7 @@ class ChatMonitor(App):
 
     BINDINGS = [
         Binding("s", "send_message", "Send Message", show=True),
+        Binding("d", "direct_message", "Direct Message", show=True),
         Binding("ctrl+m", "change_preset", "Change Preset", show=True),
         Binding("ctrl+f", "change_frequency_slot", "Change Freq Slot", show=True),
         Binding("ctrl+u", "set_user_name", "Set User Name", show=True),
@@ -141,6 +143,7 @@ class ChatMonitor(App):
             "change_preset",
             "change_frequency_slot",
             "send_message",
+            "direct_message",
             "set_user_name",
         ):
             return self.is_connected
@@ -554,6 +557,53 @@ class ChatMonitor(App):
         input_widget = self.query_one("#user-input", Input)
         input_widget.value = ""
         input_widget.placeholder = "^all"
+        input_widget.focus()
+
+    def action_direct_message(self) -> None:
+        """Show user selector dialog for direct messaging."""
+        if not self.iface:
+            self.log_system("Not connected to device", error=True)
+            return
+
+        # Check if we have any users to message
+        if len(self.known_nodes) <= 1:  # Only ourselves or empty
+            self.log_system("No other users available to message", error=True)
+            return
+
+        def handle_user_selection(selected_node_id: str | None) -> None:
+            """Handle user selection from the modal."""
+            if selected_node_id:
+                # Start message input flow with pre-selected destination
+                self.start_direct_message_input(selected_node_id)
+
+        self.push_screen(
+            UserSelectorScreen(self.known_nodes, self.my_node_id),
+            handle_user_selection,
+        )
+
+    def start_direct_message_input(self, dest_node_id: str) -> None:
+        """Start message input with a pre-selected destination."""
+        if self.input_mode:
+            return
+
+        self.input_mode = True
+        self.current_input_step = "message"  # Skip destination step
+        self.dest_input = dest_node_id  # Pre-set destination
+
+        # Show input container
+        container = self.query_one("#input-container")
+        container.add_class("visible")
+
+        # Get display name for the label
+        dest_name = self.known_nodes.get(dest_node_id, {}).get("name", dest_node_id)
+
+        # Update label and focus input
+        label = self.query_one("#input-label", Static)
+        label.update(f"Message to {dest_name}:")
+
+        input_widget = self.query_one("#user-input", Input)
+        input_widget.value = ""
+        input_widget.placeholder = "Type your message..."
         input_widget.focus()
 
     @on(Input.Submitted, "#user-input")

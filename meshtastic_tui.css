@@ -264,6 +264,55 @@ UserNameSetterScreen {
     text-style: bold;
 }
 
+/* UserSelectorScreen styles */
+UserSelectorScreen {
+    align: center middle;
+}
+
+#user-selector-dialog {
+    width: 60;
+    height: 30;
+    border: thick $background 80%;
+    background: $surface;
+    padding: 1 2;
+}
+
+#user-selector-title {
+    width: 100%;
+    content-align: center middle;
+    text-style: bold;
+    color: $text;
+    margin-bottom: 1;
+}
+
+#user-list {
+    width: 100%;
+    height: 1fr;
+    border: solid $primary;
+    background: $background;
+}
+
+#user-list > ListItem {
+    padding: 0 1;
+}
+
+#user-list > ListItem:hover {
+    background: $accent 20%;
+}
+
+#user-list > ListItem.-highlight {
+    background: $accent;
+    color: $text;
+    text-style: bold;
+}
+
+#no-users-message {
+    width: 100%;
+    content-align: center middle;
+    color: $warning;
+    margin-top: 5;
+}
+
 /* ChatMonitor main app styles */
 Screen {
     background: $background;

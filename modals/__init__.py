@@ -4,6 +4,7 @@ from .preset_selector import PresetSelectorScreen, RADIO_PRESETS
 from .frequency_slot_selector import FrequencySlotSelectorScreen
 from .quit_confirm import QuitConfirmScreen
 from .user_name_setter import UserNameSetterScreen
+from .user_selector import UserSelectorScreen
 
 __all__ = [
     "PresetSelectorScreen",
@@ -11,4 +12,5 @@ __all__ = [
     "FrequencySlotSelectorScreen",
     "QuitConfirmScreen",
     "UserNameSetterScreen",
+    "UserSelectorScreen",
 ]
