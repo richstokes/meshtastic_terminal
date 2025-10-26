@@ -76,6 +76,7 @@ class ChatMonitor(App):
         self.auto_reconnect_enabled = True  # Enable automatic reconnection
         self.reconnect_worker = None  # Track the reconnect worker
         self.stats_worker = None  # Track the stats update worker
+        self.last_packet_received = None  # Track last time we received any packet
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
@@ -403,6 +404,9 @@ class ChatMonitor(App):
 
     def on_receive(self, packet, interface):
         """Monitor received packets."""
+        # Update last packet timestamp for connection health monitoring
+        self.last_packet_received = datetime.now()
+        
         decoded = packet.get("decoded", {})
         portnum = decoded.get("portnum", "unknown")
 
@@ -1027,24 +1031,40 @@ class ChatMonitor(App):
                 )
 
     async def update_stats_loop(self) -> None:
-        """Periodically request device telemetry."""
+        """Periodically request device telemetry and monitor connection health."""
+        # Stale connection timeout: 5 minutes without any packets
+        stale_timeout_seconds = 300
+        
         while True:
             try:
                 # Wait 30 seconds between updates
                 await asyncio.sleep(30)
 
-                # Skip if not connected
-                if not self.iface or not self.iface.localNode:
+                # Skip if not connected or already reconnecting
+                if not self.iface or not self.is_connected or self.is_reconnecting:
                     continue
 
-                # Request telemetry from the device
-                # This triggers a TELEMETRY_APP packet that will be received
-                # and processed by on_receive() to update battery/voltage/channel_util
+                # Check if connection has gone stale (no packets received recently)
+                if self.last_packet_received:
+                    time_since_last_packet = (datetime.now() - self.last_packet_received).total_seconds()
+                    
+                    if time_since_last_packet > stale_timeout_seconds:
+                        self.log_system(
+                            f"No packets received for {int(time_since_last_packet)}s. Connection may be stale.",
+                            error=True
+                        )
+                        self.log_system("Triggering reconnection...", error=True)
+                        
+                        # Manually trigger disconnect to start reconnection process
+                        self.is_connected = False
+                        self.on_disconnect()
+                        continue
+
+                # Request telemetry from the device (also serves as a lightweight keepalive)
                 loop = asyncio.get_event_loop()
 
                 def request_telemetry():
                     try:
-                        # Request device metrics telemetry
                         self.iface.sendTelemetry(
                             destinationId=self.my_node_id or "^local",
                             wantResponse=False,
@@ -1059,9 +1079,9 @@ class ChatMonitor(App):
             except asyncio.CancelledError:
                 # Worker cancelled, exit cleanly
                 break
-            except Exception:
-                # Ignore errors, will retry on next iteration
-                pass
+            except Exception as e:
+                # Log unexpected errors but continue
+                self.log_system(f"Error in stats loop: {e}")
 
     async def on_shutdown(self) -> None:
         """Clean up when shutting down."""
