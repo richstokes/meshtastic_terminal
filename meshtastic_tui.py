@@ -259,6 +259,35 @@ class ChatMonitor(App):
                 # Get the modem preset/config
                 if hasattr(self.iface, "localNode") and self.iface.localNode:
                     local_config = self.iface.localNode.localConfig
+                    
+                    # Log device role/mode
+                    if local_config and hasattr(local_config, "device"):
+                        device_config = local_config.device
+                        if hasattr(device_config, "role"):
+                            role_value = device_config.role
+                            # Map numeric role to friendly name
+                            role_names = {
+                                0: "CLIENT",
+                                1: "CLIENT_MUTE",
+                                2: "ROUTER",
+                                3: "ROUTER_CLIENT",
+                                4: "REPEATER",
+                                5: "TRACKER",
+                                6: "SENSOR",
+                                7: "TAK",
+                                8: "CLIENT_HIDDEN",
+                                9: "LOST_AND_FOUND",
+                                10: "TAK_TRACKER",
+                            }
+                            # Try to get name attribute first, otherwise use mapping
+                            if hasattr(role_value, "name"):
+                                role_name = role_value.name
+                            else:
+                                role_name = role_names.get(
+                                    role_value, f"Unknown ({role_value})"
+                                )
+                            self.log_system(f"Device mode: {role_name}")
+                    
                     if local_config and hasattr(local_config, "lora"):
                         lora_config = local_config.lora
                         if hasattr(lora_config, "modem_preset"):
