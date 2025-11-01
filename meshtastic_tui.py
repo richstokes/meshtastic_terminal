@@ -508,9 +508,34 @@ class ChatMonitor(App):
                     return
 
             if message_content:
-                from_id = packet.get("fromId", packet.get("from", "unknown"))
-                to_id = packet.get("toId", packet.get("to", "unknown"))
-                self.log_message(from_id, to_id, message_content)
+                # Extract sender/receiver IDs - prefer string IDs, convert numeric if needed
+                msg_from_id = packet.get("fromId")
+                if not msg_from_id:
+                    # Fall back to numeric 'from' and convert to string ID format
+                    from_num = packet.get("from")
+                    if from_num:
+                        # Try to look up in interface's nodesByNum if available
+                        if hasattr(self.iface, "nodesByNum") and from_num in self.iface.nodesByNum:
+                            node_info = self.iface.nodesByNum[from_num]
+                            msg_from_id = node_info.get("user", {}).get("id") or f"!{from_num:08x}"
+                        else:
+                            msg_from_id = f"!{from_num:08x}"
+                    else:
+                        msg_from_id = "unknown"
+                
+                msg_to_id = packet.get("toId")
+                if not msg_to_id:
+                    to_num = packet.get("to")
+                    if to_num:
+                        if hasattr(self.iface, "nodesByNum") and to_num in self.iface.nodesByNum:
+                            node_info = self.iface.nodesByNum[to_num]
+                            msg_to_id = node_info.get("user", {}).get("id") or f"!{to_num:08x}"
+                        else:
+                            msg_to_id = f"!{to_num:08x}"
+                    else:
+                        msg_to_id = "unknown"
+                
+                self.log_message(msg_from_id, msg_to_id, message_content)
 
     def log_message(self, from_id: str, to_id: str, content: str):
         """Add a message to the table."""
@@ -526,8 +551,8 @@ class ChatMonitor(App):
         to_style = "from-me" if to_id == self.my_node_id else ""
 
         # Get display names from known_nodes or fall back to node IDs
-        from_display = self.known_nodes.get(from_id, {}).get("name", from_id)
-        to_display = self.known_nodes.get(to_id, {}).get("name", to_id)
+        from_display = self.known_nodes.get(from_id, {}).get("name") or from_id
+        to_display = self.known_nodes.get(to_id, {}).get("name") or to_id
 
         table.add_row(timestamp, from_display, to_display, content)
 
