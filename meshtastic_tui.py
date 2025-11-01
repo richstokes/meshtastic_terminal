@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
+import argparse
 import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 import meshtastic
 import meshtastic.serial_interface
+import serial.tools.list_ports
 from pubsub import pub
 from textual.app import App, ComposeResult
 from textual.containers import Container, Vertical, Grid
@@ -60,7 +62,7 @@ class ChatMonitor(App):
     voltage: reactive[float] = reactive(0.0)
     is_connected: reactive[bool] = reactive(False)
 
-    def __init__(self):
+    def __init__(self, auto_connect: bool = False):
         super().__init__()
         self.iface = None
         self.my_node_id = None
@@ -79,6 +81,7 @@ class ChatMonitor(App):
         self.stats_worker = None  # Track the stats update worker
         self.last_packet_received = None  # Track last time we received any packet
         self.selected_serial_port = None  # Track the selected serial port
+        self.auto_connect = auto_connect  # Whether to auto-connect to first port
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
@@ -136,8 +139,11 @@ class ChatMonitor(App):
         # Set initial node count (now that widgets are mounted)
         self.node_count = len(self.known_nodes)
 
-        # Show serial port selector on launch
-        self.show_port_selector()
+        # Auto-connect or show port selector
+        if self.auto_connect:
+            self.auto_connect_first_port()
+        else:
+            self.show_port_selector()
 
     def check_action_state(self, action: str) -> bool:
         """Check if an action should be enabled based on connection state."""
@@ -193,6 +199,29 @@ class ChatMonitor(App):
         self.node_count = len(self.known_nodes)
 
         return is_new
+
+    def auto_connect_first_port(self) -> None:
+        """Auto-connect to the first available serial port."""
+        # Get available serial ports
+        ports = serial.tools.list_ports.comports()
+        
+        # Filter out typical non-device ports
+        filtered_ports = [
+            p for p in ports 
+            if not any(skip in p.device.lower() for skip in ['bluetooth', 'debug'])
+        ]
+        
+        if filtered_ports:
+            # Use the first available port
+            self.selected_serial_port = filtered_ports[0].device
+            self.log_system(f"Auto-connecting to first port: {self.selected_serial_port}")
+            # Connect to device in the background
+            self.run_worker(self.connect_device(), exclusive=True)
+        else:
+            # No ports found, fall back to auto-detect
+            self.log_system("No serial ports found, using auto-detect")
+            self.selected_serial_port = None
+            self.run_worker(self.connect_device(), exclusive=True)
 
     def show_port_selector(self) -> None:
         """Show serial port selector dialog on launch."""
@@ -1192,7 +1221,17 @@ class ChatMonitor(App):
 
 def main():
     """Run the app."""
-    app = ChatMonitor()
+    parser = argparse.ArgumentParser(
+        description="Meshtastic Terminal - A modern terminal UI for Meshtastic mesh networks"
+    )
+    parser.add_argument(
+        "-a", "--auto-connect",
+        action="store_true",
+        help="Auto-connect to the first available serial port"
+    )
+    args = parser.parse_args()
+    
+    app = ChatMonitor(auto_connect=args.auto_connect)
     app.run()
 
 
