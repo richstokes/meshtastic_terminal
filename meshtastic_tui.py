@@ -22,6 +22,7 @@ from modals import (
     QuitConfirmScreen,
     UserNameSetterScreen,
     UserSelectorScreen,
+    SerialPortSelectorScreen,
 )
 
 # Load CSS from external file
@@ -77,6 +78,7 @@ class ChatMonitor(App):
         self.reconnect_worker = None  # Track the reconnect worker
         self.stats_worker = None  # Track the stats update worker
         self.last_packet_received = None  # Track last time we received any packet
+        self.selected_serial_port = None  # Track the selected serial port
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
@@ -134,8 +136,8 @@ class ChatMonitor(App):
         # Set initial node count (now that widgets are mounted)
         self.node_count = len(self.known_nodes)
 
-        # Connect to device in the background
-        self.run_worker(self.connect_device(), exclusive=True)
+        # Show serial port selector on launch
+        self.show_port_selector()
 
     def check_action_state(self, action: str) -> bool:
         """Check if an action should be enabled based on connection state."""
@@ -192,9 +194,28 @@ class ChatMonitor(App):
 
         return is_new
 
+    def show_port_selector(self) -> None:
+        """Show serial port selector dialog on launch."""
+        def handle_port_selection(selected_port) -> None:
+            """Handle port selection from the modal."""
+            if selected_port is False:
+                # User cancelled
+                self.log_system("Connection cancelled by user", error=True)
+                self.exit()
+            else:
+                # selected_port can be None (auto-detect) or a device path
+                self.selected_serial_port = selected_port
+                # Connect to device in the background
+                self.run_worker(self.connect_device(), exclusive=True)
+
+        self.push_screen(SerialPortSelectorScreen(), handle_port_selection)
+
     async def connect_device(self) -> None:
         """Connect to Meshtastic device."""
-        self.log_system("Connecting to device...")
+        if self.selected_serial_port:
+            self.log_system(f"Connecting to {self.selected_serial_port}...")
+        else:
+            self.log_system("Connecting to device (auto-detect)...")
 
         try:
             # Run blocking meshtastic operations in executor
@@ -202,7 +223,7 @@ class ChatMonitor(App):
             self.iface = await loop.run_in_executor(
                 None,
                 lambda: meshtastic.serial_interface.SerialInterface(
-                    devPath=SERIAL_PORT
+                    devPath=self.selected_serial_port
                 ),
             )
 
@@ -968,7 +989,7 @@ class ChatMonitor(App):
                 self.iface = await loop.run_in_executor(
                     None,
                     lambda: meshtastic.serial_interface.SerialInterface(
-                        devPath=SERIAL_PORT
+                        devPath=self.selected_serial_port
                     ),
                 )
 
@@ -1052,7 +1073,7 @@ class ChatMonitor(App):
                 self.iface = await loop.run_in_executor(
                     None,
                     lambda: meshtastic.serial_interface.SerialInterface(
-                        devPath=SERIAL_PORT
+                        devPath=self.selected_serial_port
                     ),
                 )
 

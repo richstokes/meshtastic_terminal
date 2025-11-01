@@ -5,6 +5,7 @@ from .frequency_slot_selector import FrequencySlotSelectorScreen
 from .quit_confirm import QuitConfirmScreen
 from .user_name_setter import UserNameSetterScreen
 from .user_selector import UserSelectorScreen
+from .serial_port_selector import SerialPortSelectorScreen
 
 __all__ = [
     "PresetSelectorScreen",
@@ -13,4 +14,5 @@ __all__ = [
     "QuitConfirmScreen",
     "UserNameSetterScreen",
     "UserSelectorScreen",
+    "SerialPortSelectorScreen",
 ]
