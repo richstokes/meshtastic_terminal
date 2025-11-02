@@ -611,9 +611,28 @@ class ChatMonitor(App):
             "unknown",
         ]
 
-        # Handle NODEINFO_APP specially - it means we learned about a node
+        # Handle NODEINFO_APP specially - this contains node name information
         if portnum == "NODEINFO_APP":
-            # We already handled this above, just return
+            # NODEINFO packets are the ideal time to discover nodes with friendly names
+            # The meshtastic library updates iface.nodes automatically, so we can now
+            # get the friendly name and log discovery if this is a new node
+            if from_id and from_id != self.my_node_id and not from_id.startswith("^"):
+                # Get the friendly name (should be available now after NODEINFO)
+                node_name = self.get_node_display_name(from_id)
+                
+                # Check if this was previously known only by ID
+                was_unknown = from_id not in self.known_nodes
+                previously_unnamed = (
+                    from_id in self.known_nodes 
+                    and self.known_nodes[from_id].get("name") == from_id
+                )
+                
+                # Register/update the node
+                self.register_node(from_id, node_name if node_name != from_id else None)
+                
+                # Log discovery if new or if we just learned the name
+                if (was_unknown or previously_unnamed) and node_name != from_id:
+                    self.log_node_discovery(from_id, node_name)
             return
 
         if portnum in ignored_types:
