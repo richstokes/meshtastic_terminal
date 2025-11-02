@@ -575,7 +575,8 @@ class ChatMonitor(App):
             # Get node name and register if new (exclude channel names like ^all)
             node_name = self.get_node_display_name(from_id)
             is_new = self.register_node(from_id, node_name if node_name != from_id else None)
-            if is_new:
+            # Only log discovery if we have a friendly name (not just the node ID)
+            if is_new and node_name != from_id:
                 self.log_node_discovery(from_id, node_name)
 
         # Handle telemetry packets from our own node
