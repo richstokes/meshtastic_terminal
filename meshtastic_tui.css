@@ -409,6 +409,49 @@ NodeListScreen {
     margin-top: 1;
 }
 
+/* NodeDetailScreen styles */
+NodeDetailScreen {
+    align: center middle;
+}
+
+#node-detail-dialog {
+    width: 80%;
+    height: 90%;
+    border: thick $background 80%;
+    background: $surface;
+    padding: 1 2;
+}
+
+#node-detail-scroll {
+    width: 100%;
+    height: 1fr;
+    border: solid $primary;
+    background: $background;
+}
+
+#node-detail-title {
+    width: 100%;
+    content-align: center middle;
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+    background: $surface;
+    padding: 1 0;
+}
+
+#node-detail-content {
+    width: 100%;
+    padding: 1 2;
+    color: $text;
+}
+
+#node-detail-footer {
+    width: 100%;
+    content-align: center middle;
+    color: $text 70%;
+    margin-top: 1;
+}
+
 /* ChatMonitor main app styles */
 Screen {
     background: $background;

@@ -6,6 +6,7 @@ from textual.containers import Container, VerticalScroll
 from textual.widgets import DataTable, Label, Static
 from textual.screen import ModalScreen
 from textual import on, events
+from .node_detail import NodeDetailScreen
 
 
 class NodeListScreen(ModalScreen):
@@ -14,6 +15,7 @@ class NodeListScreen(ModalScreen):
     BINDINGS = [
         ("escape", "dismiss_dialog", "Close"),
         ("q", "dismiss_dialog", "Close"),
+        ("enter", "view_node_detail", "View Details"),
     ]
 
     def __init__(self, interface, my_node_id: str = None):
@@ -27,7 +29,8 @@ class NodeListScreen(ModalScreen):
         super().__init__()
         self.interface = interface
         self.my_node_id = my_node_id
-        self.node_rows = []  # List of (name, node_id) tuples for jump functionality
+        self.node_rows = []  # List of (name, node_id, node_data) tuples for navigation
+        self.nodes_dict = {}  # Map node_id to full node_data
 
     def compose(self) -> ComposeResult:
         """Create the node list dialog."""
@@ -39,7 +42,7 @@ class NodeListScreen(ModalScreen):
             table.cursor_type = "row"
             yield table
             
-            yield Static("Press ESC or Q to close", id="node-list-footer")
+            yield Static("Press ENTER for details | ESC to close | Letter keys to jump", id="node-list-footer")
 
     def on_mount(self) -> None:
         """Populate the node list when mounted."""
@@ -55,11 +58,12 @@ class NodeListScreen(ModalScreen):
             "Last Heard",
         )
         
-        # Get nodes from interface
+        # Get nodes from interface and store in dictionary
         nodes = []
         if hasattr(self.interface, "nodes") and self.interface.nodes:
             for node_id, node_data in self.interface.nodes.items():
                 nodes.append((node_id, node_data))
+                self.nodes_dict[node_id] = node_data
         
         # Sort nodes: our node first, then by name
         def sort_key(item):
@@ -223,9 +227,9 @@ class NodeListScreen(ModalScreen):
             else:
                 time_str = "Never"
             
-            # Store node info for jump functionality (without star indicator)
+            # Store node info for navigation (without star indicator)
             clean_name = long_name or short_name or "Unknown"
-            self.node_rows.append((clean_name, node_id))
+            self.node_rows.append((clean_name, node_id, node_data))
             
             # Add row to table
             table.add_row(
@@ -245,16 +249,41 @@ class NodeListScreen(ModalScreen):
         """Dismiss the dialog."""
         self.dismiss()
 
+    def action_view_node_detail(self) -> None:
+        """Open detail view for the currently selected node."""
+        self._show_node_detail()
+
+    @on(DataTable.RowSelected)
+    def on_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Handle row selection (Enter key or click)."""
+        self._show_node_detail()
+
+    def _show_node_detail(self) -> None:
+        """Show the detail screen for the currently selected node."""
+        table = self.query_one("#node-table", DataTable)
+        
+        # Get the current cursor row
+        cursor_row = table.cursor_row
+        if cursor_row < 0 or cursor_row >= len(self.node_rows):
+            return
+        
+        # Get node data for the selected row
+        _, node_id, node_data = self.node_rows[cursor_row]
+        is_my_node = (node_id == self.my_node_id)
+        
+        # Push the detail screen as a nested modal
+        self.app.push_screen(NodeDetailScreen(node_id, node_data, is_my_node))
+
     def on_key(self, event: events.Key) -> None:
         """Handle letter key presses to jump to matching nodes alphabetically."""
-        # Only handle single letter keys
-        if len(event.key) == 1 and event.key.isalpha():
+        # Only handle single letter keys, but not 'q' (reserved for quit binding)
+        if len(event.key) == 1 and event.key.isalpha() and event.key.lower() != 'q':
             letter = event.key.lower()
             table = self.query_one("#node-table", DataTable)
             
             # Skip our own node at index 0 when searching
             # Find first node whose name starts with this letter
-            for i, (node_name, node_id) in enumerate(self.node_rows):
+            for i, (node_name, node_id, _) in enumerate(self.node_rows):
                 # Skip our own node (it's always first)
                 if i == 0 and node_id == self.my_node_id:
                     continue
