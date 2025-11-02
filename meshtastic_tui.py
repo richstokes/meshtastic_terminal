@@ -691,7 +691,13 @@ class ChatMonitor(App):
         timestamp = datetime.now().strftime("%H:%M:%S")
         table = self.query_one("#messages-table", DataTable)
 
-        table.add_row(timestamp, "[NODE]", node_id, f"Discovered: {node_name}")
+        # Show both friendly name and node ID for clarity
+        if node_name and node_name != node_id:
+            message = f"Discovered: {node_name} ({node_id})"
+        else:
+            message = f"Discovered: {node_id}"
+        
+        table.add_row(timestamp, "[NODE]", node_id, message)
 
         # Keep only last MAX_MESSAGES
         if table.row_count > MAX_MESSAGES:
