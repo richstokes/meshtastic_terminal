@@ -21,7 +21,7 @@ Meshtastic Terminal is a modern terminal UI for real-time communication over Mes
 - Automatic message history with configurable limits
 - Ability to switch radio presets/modes and frequency slots on the fly
 - Theme support - press ctrl+p to open the theme selector
-
+- Node list - press ctrl+n to view the list of discovered nodes
 
 ## Prerequisites
 
@@ -84,6 +84,12 @@ The recommended way to run the terminal interface is using `uv run`:
 
 ```bash
 uv run python meshtastic_tui.py
+```
+
+OR to auto-detect and connect to the first detected Meshtastic device:
+
+```bash
+uv run python meshtastic_tui.py -a
 ```
 
 ## Contributing
