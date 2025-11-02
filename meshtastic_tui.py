@@ -177,6 +177,33 @@ class ChatMonitor(App):
         pub.subscribe(self.on_disconnect, "meshtastic.connection.lost")
         pub.subscribe(self.on_receive, "meshtastic.receive")
 
+    def _normalize_node_id(self, packet) -> Optional[str]:
+        """
+        Extract and normalize node ID from packet to string format.
+        
+        Args:
+            packet: The packet dictionary containing 'fromId'/'from' or 'toId'/'to'
+            
+        Returns:
+            Normalized string ID (e.g., "!9bb3634b") or None if not found
+        """
+        # Try string ID first (fromId or toId)
+        node_id = packet.get("fromId") or packet.get("toId")
+        if node_id:
+            return node_id
+        
+        # Fall back to numeric ID (from or to)
+        node_num = packet.get("from") or packet.get("to")
+        if node_num:
+            # Try to look up in nodesByNum for proper ID
+            if hasattr(self.iface, "nodesByNum") and node_num in self.iface.nodesByNum:
+                node_info = self.iface.nodesByNum[node_num]
+                return node_info.get("user", {}).get("id") or f"!{node_num:08x}"
+            else:
+                return f"!{node_num:08x}"
+        
+        return None
+
     def register_node(self, node_id: str, node_name: str = None) -> bool:
         """
         Register a node and return True if it's newly discovered.
@@ -505,17 +532,7 @@ class ChatMonitor(App):
         portnum = decoded.get("portnum", "unknown")
 
         # Check for new nodes from any packet type
-        # Extract and normalize node ID (convert numeric to string format if needed)
-        from_id = packet.get("fromId")
-        if not from_id:
-            from_num = packet.get("from")
-            if from_num:
-                # Convert numeric ID to string format
-                if hasattr(self.iface, "nodesByNum") and from_num in self.iface.nodesByNum:
-                    node_info = self.iface.nodesByNum[from_num]
-                    from_id = node_info.get("user", {}).get("id") or f"!{from_num:08x}"
-                else:
-                    from_id = f"!{from_num:08x}"
+        from_id = self._normalize_node_id(packet)
         
         if from_id and from_id != self.my_node_id:
             # Try to get node name from the interface's node database
@@ -584,32 +601,9 @@ class ChatMonitor(App):
                     return
 
             if message_content:
-                # Extract sender/receiver IDs - prefer string IDs, convert numeric if needed
-                msg_from_id = packet.get("fromId")
-                if not msg_from_id:
-                    # Fall back to numeric 'from' and convert to string ID format
-                    from_num = packet.get("from")
-                    if from_num:
-                        # Try to look up in interface's nodesByNum if available
-                        if hasattr(self.iface, "nodesByNum") and from_num in self.iface.nodesByNum:
-                            node_info = self.iface.nodesByNum[from_num]
-                            msg_from_id = node_info.get("user", {}).get("id") or f"!{from_num:08x}"
-                        else:
-                            msg_from_id = f"!{from_num:08x}"
-                    else:
-                        msg_from_id = "unknown"
-                
-                msg_to_id = packet.get("toId")
-                if not msg_to_id:
-                    to_num = packet.get("to")
-                    if to_num:
-                        if hasattr(self.iface, "nodesByNum") and to_num in self.iface.nodesByNum:
-                            node_info = self.iface.nodesByNum[to_num]
-                            msg_to_id = node_info.get("user", {}).get("id") or f"!{to_num:08x}"
-                        else:
-                            msg_to_id = f"!{to_num:08x}"
-                    else:
-                        msg_to_id = "unknown"
+                # Extract and normalize sender/receiver IDs
+                msg_from_id = self._normalize_node_id({"fromId": packet.get("fromId"), "from": packet.get("from")}) or "unknown"
+                msg_to_id = self._normalize_node_id({"toId": packet.get("toId"), "to": packet.get("to")}) or "unknown"
                 
                 # Check if this is a reply (has replyId field)
                 reply_id = decoded.get("replyId") or packet.get("replyId")
