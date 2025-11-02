@@ -204,6 +204,43 @@ class ChatMonitor(App):
         
         return None
 
+    def get_node_display_name(self, node_id: str, use_cache: bool = True) -> str:
+        """Get a friendly display name for a node.
+        
+        This method centralizes the name resolution logic:
+        1. Check known_nodes cache (if use_cache=True)
+        2. Fallback to iface.nodes database
+        3. Cache newly found names
+        4. Return node_id if no friendly name found
+        
+        Args:
+            node_id: The node ID to get display name for
+            use_cache: Whether to check and update the cache (default True)
+            
+        Returns:
+            The friendly display name or node_id if not found
+        """
+        if not node_id:
+            return "unknown"
+            
+        # Try cache first if enabled
+        if use_cache:
+            cached_name = self.known_nodes.get(node_id, {}).get("name")
+            if cached_name and cached_name != node_id:
+                return cached_name
+        
+        # Fallback to interface's node database
+        friendly_name = None
+        if hasattr(self.iface, "nodes") and self.iface and node_id in self.iface.nodes:
+            user_info = self.iface.nodes[node_id].get("user", {})
+            friendly_name = user_info.get("longName") or user_info.get("shortName")
+            
+            # Cache it for future lookups
+            if friendly_name and use_cache:
+                self.register_node(node_id, friendly_name)
+        
+        return friendly_name or node_id
+
     def register_node(self, node_id: str, node_name: str = None) -> bool:
         """
         Register a node and return True if it's newly discovered.
@@ -535,17 +572,11 @@ class ChatMonitor(App):
         from_id = self._normalize_node_id(packet)
         
         if from_id and from_id != self.my_node_id:
-            # Try to get node name from the interface's node database
-            node_name = None
-            if hasattr(self.iface, "nodes") and from_id in self.iface.nodes:
-                user_info = self.iface.nodes[from_id].get("user", {})
-                node_name = user_info.get("longName") or user_info.get("shortName")
-
-            # Register and check if new
-            is_new = self.register_node(from_id, node_name)
+            # Get node name and register if new
+            node_name = self.get_node_display_name(from_id)
+            is_new = self.register_node(from_id, node_name if node_name != from_id else None)
             if is_new:
-                display_name = node_name or from_id
-                self.log_node_discovery(from_id, display_name)
+                self.log_node_discovery(from_id, node_name)
 
         # Handle telemetry packets from our own node
         if portnum == "TELEMETRY_APP" and from_id == self.my_node_id:
@@ -624,28 +655,9 @@ class ChatMonitor(App):
         from_style = "from-me" if from_id == self.my_node_id else ""
         to_style = "from-me" if to_id == self.my_node_id else ""
 
-        # Get display names - try known_nodes first, then interface nodes database, then fall back to IDs
-        from_display = self.known_nodes.get(from_id, {}).get("name")
-        if not from_display or from_display == from_id:
-            # Try to get from interface's node database
-            if hasattr(self.iface, "nodes") and self.iface and from_id in self.iface.nodes:
-                user_info = self.iface.nodes[from_id].get("user", {})
-                from_display = user_info.get("longName") or user_info.get("shortName")
-                # Cache it for future lookups
-                if from_display:
-                    self.register_node(from_id, from_display)
-        from_display = from_display or from_id
-        
-        to_display = self.known_nodes.get(to_id, {}).get("name")
-        if not to_display or to_display == to_id:
-            # Try to get from interface's node database
-            if hasattr(self.iface, "nodes") and self.iface and to_id in self.iface.nodes:
-                user_info = self.iface.nodes[to_id].get("user", {})
-                to_display = user_info.get("longName") or user_info.get("shortName")
-                # Cache it for future lookups
-                if to_display:
-                    self.register_node(to_id, to_display)
-        to_display = to_display or to_id
+        # Get display names using centralized helper
+        from_display = self.get_node_display_name(from_id)
+        to_display = self.get_node_display_name(to_id)
 
         # Add reply indicator if this is a reply
         # Using ↩ (U+21A9 LEFTWARDS ARROW WITH HOOK) as reply icon
