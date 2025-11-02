@@ -588,9 +588,13 @@ class ChatMonitor(App):
                     else:
                         msg_to_id = "unknown"
                 
-                self.log_message(msg_from_id, msg_to_id, message_content)
+                # Check if this is a reply (has replyId field)
+                reply_id = decoded.get("replyId") or packet.get("replyId")
+                is_reply = reply_id is not None and reply_id != 0
+                
+                self.log_message(msg_from_id, msg_to_id, message_content, is_reply=is_reply)
 
-    def log_message(self, from_id: str, to_id: str, content: str):
+    def log_message(self, from_id: str, to_id: str, content: str, is_reply: bool = False):
         """Add a message to the table."""
         if not content or not content.strip():
             return
@@ -606,6 +610,11 @@ class ChatMonitor(App):
         # Get display names from known_nodes or fall back to node IDs
         from_display = self.known_nodes.get(from_id, {}).get("name") or from_id
         to_display = self.known_nodes.get(to_id, {}).get("name") or to_id
+
+        # Add reply indicator if this is a reply
+        # Using ↩ (U+21A9 LEFTWARDS ARROW WITH HOOK) as reply icon
+        if is_reply:
+            content = "↩ " + content
 
         table.add_row(timestamp, from_display, to_display, content)
 
