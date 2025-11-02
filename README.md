@@ -11,18 +11,16 @@ Meshtastic Terminal is a modern terminal UI for real-time communication over Mes
 ## Features
 
 - Real-time message display with timestamps
-- Interactive UI using Textual framework
 - Node discovery tracking
 - Radio configuration display (preset/region)
 - Live node counter in header, plus other stats
 - Press 's' to send a message
 - Press 'd' to send a direct message (select from a list of discovered nodes)
 - Press 'q' to quit
-- Automatic message history with configurable limits
 - Automatically reconnects if the device is disconnected / your computer sleeps
 - Ability to switch radio presets/modes and frequency slots on the fly
+- Node list - press ctrl+n to view the list of discovered nodes / view details
 - Theme support - press ctrl+p to open the theme selector
-- Node list - press ctrl+n to view the list of discovered nodes
 
 ## Prerequisites
 
