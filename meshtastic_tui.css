@@ -313,6 +313,102 @@ UserSelectorScreen {
     margin-top: 5;
 }
 
+/* SerialPortSelectorScreen styles */
+SerialPortSelectorScreen {
+    align: center middle;
+}
+
+#port-selector-dialog {
+    width: 70;
+    height: 30;
+    border: thick $background 80%;
+    background: $surface;
+    padding: 1 2;
+}
+
+#port-selector-title {
+    width: 100%;
+    content-align: center middle;
+    text-style: bold;
+    color: $text;
+    margin-bottom: 1;
+}
+
+#port-list {
+    width: 100%;
+    height: 1fr;
+    border: solid $primary;
+    background: $background;
+    margin-bottom: 1;
+}
+
+#port-list > ListItem {
+    padding: 0 1;
+}
+
+#port-list > ListItem:hover {
+    background: $accent 20%;
+}
+
+#port-list > ListItem.-highlight {
+    background: $accent;
+    color: $text;
+    text-style: bold;
+}
+
+#no-ports-message {
+    width: 100%;
+    content-align: center middle;
+    color: $warning;
+    margin: 2 0;
+}
+
+#auto-button, #cancel-button {
+    width: 100%;
+    margin-top: 1;
+}
+
+#auto-button:focus, #cancel-button:focus {
+    border: thick $accent;
+    background: $accent;
+    text-style: bold;
+}
+
+/* NodeListScreen styles */
+NodeListScreen {
+    align: center middle;
+}
+
+#node-list-dialog {
+    width: 95%;
+    height: 85%;
+    border: thick $background 80%;
+    background: $surface;
+    padding: 1 2;
+}
+
+#node-list-title {
+    width: 100%;
+    content-align: center middle;
+    text-style: bold;
+    color: $text;
+    margin-bottom: 1;
+}
+
+#node-table {
+    width: 100%;
+    height: 1fr;
+    border: solid $primary;
+    background: $background;
+}
+
+#node-list-footer {
+    width: 100%;
+    content-align: center middle;
+    color: $text 70%;
+    margin-top: 1;
+}
+
 /* ChatMonitor main app styles */
 Screen {
     background: $background;

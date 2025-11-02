@@ -6,6 +6,7 @@ from .quit_confirm import QuitConfirmScreen
 from .user_name_setter import UserNameSetterScreen
 from .user_selector import UserSelectorScreen
 from .serial_port_selector import SerialPortSelectorScreen
+from .node_list import NodeListScreen
 
 __all__ = [
     "PresetSelectorScreen",
@@ -15,4 +16,5 @@ __all__ = [
     "UserNameSetterScreen",
     "UserSelectorScreen",
     "SerialPortSelectorScreen",
+    "NodeListScreen",
 ]

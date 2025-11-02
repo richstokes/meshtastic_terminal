@@ -25,6 +25,7 @@ from modals import (
     UserNameSetterScreen,
     UserSelectorScreen,
     SerialPortSelectorScreen,
+    NodeListScreen,
 )
 
 # Load CSS from external file
@@ -48,6 +49,7 @@ class ChatMonitor(App):
     BINDINGS = [
         Binding("s", "send_message", "Send Message", show=True),
         Binding("d", "direct_message", "Direct Message", show=True),
+        Binding("ctrl+n", "show_node_list", "Node List", show=True),
         Binding("ctrl+m", "change_preset", "Change Preset", show=True),
         Binding("ctrl+f", "change_frequency_slot", "Change Freq Slot", show=True),
         Binding("ctrl+u", "set_user_name", "Set User Name", show=True),
@@ -154,6 +156,7 @@ class ChatMonitor(App):
             "send_message",
             "direct_message",
             "set_user_name",
+            "show_node_list",
         ):
             return self.is_connected
         # All other actions are always enabled
@@ -826,6 +829,14 @@ class ChatMonitor(App):
                 self.exit()
 
         self.push_screen(QuitConfirmScreen(), handle_quit_response)
+
+    def action_show_node_list(self) -> None:
+        """Show the node list dialog."""
+        if not self.iface:
+            self.log_system("Not connected to device", error=True)
+            return
+
+        self.push_screen(NodeListScreen(self.iface, self.my_node_id))
 
     def action_set_user_name(self) -> None:
         """Show the user name setter dialog."""
