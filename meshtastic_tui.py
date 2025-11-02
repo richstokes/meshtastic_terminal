@@ -189,9 +189,24 @@ class ChatMonitor(App):
             True if this is a newly discovered node, False if already known
         """
         is_new = node_id not in self.known_nodes
+        
+        # Determine the best name to use
+        # Priority: new non-trivial name > existing name > node_id
+        existing_name = self.known_nodes.get(node_id, {}).get("name")
+        
+        # Only update name if new name is better than existing
+        if node_name and node_name != node_id:
+            # New name is good, use it
+            best_name = node_name
+        elif existing_name and existing_name != node_id:
+            # Keep existing good name
+            best_name = existing_name
+        else:
+            # Fall back to node_id
+            best_name = node_id
 
         self.known_nodes[node_id] = {
-            "name": node_name or node_id,
+            "name": best_name,
             "last_seen": datetime.now().isoformat(),
             "first_seen": self.known_nodes.get(node_id, {}).get(
                 "first_seen", datetime.now().isoformat()
@@ -271,6 +286,9 @@ class ChatMonitor(App):
             info = await loop.run_in_executor(None, self.iface.getMyNodeInfo)
             self.log_system(f"Ready: {info['user']['longName']}")
 
+            # Store our node ID early (needed for registration logic)
+            self.my_node_id = info["user"]["id"]
+            
             # Store current user names
             self.current_long_name = info["user"].get("longName", "")
             self.current_short_name = info["user"].get("shortName", "")
@@ -288,17 +306,11 @@ class ChatMonitor(App):
                             node_name = (
                                 user_info.get("longName")
                                 or user_info.get("shortName")
-                                or node_id
                             )
-                            # Register node from device database
-                            self.known_nodes[node_id] = {
-                                "name": node_name,
-                                "last_seen": datetime.now().isoformat(),
-                                "first_seen": datetime.now().isoformat(),
-                            }
+                            # Register node from device database using consistent method
+                            self.register_node(node_id, node_name)
                             node_count += 1
 
-                    self.node_count = len(self.known_nodes)
                     self.log_system(
                         f"Loaded {node_count} node{'s' if node_count != 1 else ''} from device"
                     )
@@ -493,7 +505,18 @@ class ChatMonitor(App):
         portnum = decoded.get("portnum", "unknown")
 
         # Check for new nodes from any packet type
-        from_id = packet.get("fromId", packet.get("from"))
+        # Extract and normalize node ID (convert numeric to string format if needed)
+        from_id = packet.get("fromId")
+        if not from_id:
+            from_num = packet.get("from")
+            if from_num:
+                # Convert numeric ID to string format
+                if hasattr(self.iface, "nodesByNum") and from_num in self.iface.nodesByNum:
+                    node_info = self.iface.nodesByNum[from_num]
+                    from_id = node_info.get("user", {}).get("id") or f"!{from_num:08x}"
+                else:
+                    from_id = f"!{from_num:08x}"
+        
         if from_id and from_id != self.my_node_id:
             # Try to get node name from the interface's node database
             node_name = None
