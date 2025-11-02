@@ -607,9 +607,28 @@ class ChatMonitor(App):
         from_style = "from-me" if from_id == self.my_node_id else ""
         to_style = "from-me" if to_id == self.my_node_id else ""
 
-        # Get display names from known_nodes or fall back to node IDs
-        from_display = self.known_nodes.get(from_id, {}).get("name") or from_id
-        to_display = self.known_nodes.get(to_id, {}).get("name") or to_id
+        # Get display names - try known_nodes first, then interface nodes database, then fall back to IDs
+        from_display = self.known_nodes.get(from_id, {}).get("name")
+        if not from_display or from_display == from_id:
+            # Try to get from interface's node database
+            if hasattr(self.iface, "nodes") and self.iface and from_id in self.iface.nodes:
+                user_info = self.iface.nodes[from_id].get("user", {})
+                from_display = user_info.get("longName") or user_info.get("shortName")
+                # Cache it for future lookups
+                if from_display:
+                    self.register_node(from_id, from_display)
+        from_display = from_display or from_id
+        
+        to_display = self.known_nodes.get(to_id, {}).get("name")
+        if not to_display or to_display == to_id:
+            # Try to get from interface's node database
+            if hasattr(self.iface, "nodes") and self.iface and to_id in self.iface.nodes:
+                user_info = self.iface.nodes[to_id].get("user", {})
+                to_display = user_info.get("longName") or user_info.get("shortName")
+                # Cache it for future lookups
+                if to_display:
+                    self.register_node(to_id, to_display)
+        to_display = to_display or to_id
 
         # Add reply indicator if this is a reply
         # Using ↩ (U+21A9 LEFTWARDS ARROW WITH HOOK) as reply icon
