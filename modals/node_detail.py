@@ -3,7 +3,7 @@
 from datetime import datetime
 from textual.app import ComposeResult
 from textual.containers import Container, VerticalScroll
-from textual.widgets import Label, Static
+from textual.widgets import Label, Static, Link
 from textual.screen import ModalScreen
 
 
@@ -28,6 +28,7 @@ class NodeDetailScreen(ModalScreen):
         self.node_id = node_id
         self.node_data = node_data
         self.is_my_node = is_my_node
+        self.maps_url = None  # Will store Google Maps URL if location available
 
     def compose(self) -> ComposeResult:
         """Create the node detail dialog."""
@@ -35,9 +36,13 @@ class NodeDetailScreen(ModalScreen):
             with VerticalScroll(id="node-detail-scroll"):
                 yield Label("Node Details", id="node-detail-title")
                 
-                # Build the detailed information display
+                # Build the detailed information display (this sets self.maps_url if location exists)
                 info_text = self._build_node_info()
-                yield Static(info_text, id="node-detail-content")
+                yield Static(info_text, id="node-detail-content", markup=False)
+                
+                # Add clickable link inline with position data if we have a location
+                if self.maps_url:
+                    yield Link("View on Google Maps", url=self.maps_url, id="maps-link")
             
             yield Static("Press ESC or Q to go back", id="node-detail-footer")
 
@@ -137,15 +142,23 @@ class NodeDetailScreen(ModalScreen):
             longitude = position.get("longitude") or position.get("longitudeI")
             altitude = position.get("altitude")
             
+            # Convert coordinates and track if we have valid lat/lon
+            has_valid_location = False
+            lat_float = None
+            lon_float = None
+            
             if latitude is not None:
                 # Handle integer format (degrees * 1e-7)
                 if isinstance(latitude, int) and abs(latitude) > 180:
                     latitude = latitude / 1e7
+                lat_float = float(latitude)
                 lines.append(f"Latitude: {latitude:.6f}°")
+                has_valid_location = True
             
             if longitude is not None:
                 if isinstance(longitude, int) and abs(longitude) > 180:
                     longitude = longitude / 1e7
+                lon_float = float(longitude)
                 lines.append(f"Longitude: {longitude:.6f}°")
             
             if altitude is not None:
@@ -163,6 +176,11 @@ class NodeDetailScreen(ModalScreen):
                     lines.append(f"Position Time: {dt.strftime('%Y-%m-%d %H:%M:%S')}")
                 except Exception:
                     pass
+            
+            # Store Google Maps URL if we have both lat and lon (will be rendered as clickable link)
+            # Using zoom level 13 for a neighborhood/area view (ranges: 1=world, 5=continent, 10=city, 15=streets, 20=buildings)
+            if has_valid_location and lat_float is not None and lon_float is not None:
+                self.maps_url = f"https://www.google.com/maps/@{lat_float},{lon_float},13z"
             
             lines.append("")
         

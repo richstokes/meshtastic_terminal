@@ -452,6 +452,19 @@ NodeDetailScreen {
     margin-top: 1;
 }
 
+#maps-link {
+    margin: 0 0 1 2;
+    padding: 0 1;
+}
+
+#maps-link:hover {
+    text-style: bold;
+}
+
+#maps-link:focus {
+    text-style: bold underline;
+}
+
 /* ChatMonitor main app styles */
 Screen {
     background: $background;
