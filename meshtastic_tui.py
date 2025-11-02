@@ -568,11 +568,11 @@ class ChatMonitor(App):
         decoded = packet.get("decoded", {})
         portnum = decoded.get("portnum", "unknown")
 
-        # Check for new nodes from any packet type
-        from_id = self._normalize_node_id(packet)
+        # Check for new nodes from sender only (not destination)
+        from_id = self._normalize_node_id({"fromId": packet.get("fromId"), "from": packet.get("from")})
         
-        if from_id and from_id != self.my_node_id:
-            # Get node name and register if new
+        if from_id and from_id != self.my_node_id and not from_id.startswith("^"):
+            # Get node name and register if new (exclude channel names like ^all)
             node_name = self.get_node_display_name(from_id)
             is_new = self.register_node(from_id, node_name if node_name != from_id else None)
             if is_new:
