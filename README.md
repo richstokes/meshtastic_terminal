@@ -17,6 +17,7 @@ Meshtastic Terminal is a modern terminal UI for real-time communication over Mes
 - Press 's' to send a message
 - Press 'd' to send a direct message (select from a list of discovered nodes)
 - Press 'q' to quit
+- Press 'h' to toggle the hop count display
 - Automatically reconnects if the device is disconnected / your computer sleeps
 - Ability to switch radio presets/modes and frequency slots on the fly
 - Node list - press ctrl+n to view the list of discovered nodes / view details

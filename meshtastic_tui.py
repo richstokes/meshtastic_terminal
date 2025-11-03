@@ -49,6 +49,7 @@ class ChatMonitor(App):
     BINDINGS = [
         Binding("s", "send_message", "Send Message", show=True),
         Binding("d", "direct_message", "Direct Message", show=True),
+        Binding("h", "toggle_hop_column", "Toggle Hops", show=True),
         Binding("ctrl+n", "show_node_list", "Node List", show=True),
         Binding("ctrl+m", "change_preset", "Change Preset", show=True),
         Binding("ctrl+f", "change_frequency_slot", "Change Freq Slot", show=True),
@@ -63,6 +64,7 @@ class ChatMonitor(App):
     battery_level: reactive[int] = reactive(0)
     voltage: reactive[float] = reactive(0.0)
     is_connected: reactive[bool] = reactive(False)
+    show_hop_column: reactive[bool] = reactive(False)
 
     def __init__(self, auto_connect: bool = False):
         super().__init__()
@@ -84,6 +86,7 @@ class ChatMonitor(App):
         self.last_packet_received = None  # Track last time we received any packet
         self.selected_serial_port = None  # Track the selected serial port
         self.auto_connect = auto_connect  # Whether to auto-connect to first port
+        self.message_metadata = []  # Store full message data including hop counts
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
@@ -130,13 +133,23 @@ class ChatMonitor(App):
 
         self.sub_title = " | ".join(parts)
 
+    def _setup_table_columns(self) -> None:
+        """Set up table columns based on show_hop_column state."""
+        table = self.query_one("#messages-table", DataTable)
+        table.clear(columns=True)
+        
+        if self.show_hop_column:
+            table.add_columns("Time", "From", "To", "Hops", "Message")
+        else:
+            table.add_columns("Time", "From", "To", "Message")
+
     def on_mount(self) -> None:
         """Set up the app when mounted."""
         # Set up the table
         table = self.query_one("#messages-table", DataTable)
         table.cursor_type = "none"
         table.zebra_stripes = True
-        table.add_columns("Time", "From", "To", "Message")
+        self._setup_table_columns()
 
         # Set initial node count (now that widgets are mounted)
         self.node_count = len(self.known_nodes)
@@ -660,9 +673,14 @@ class ChatMonitor(App):
                 reply_id = decoded.get("replyId") or packet.get("replyId")
                 is_reply = reply_id is not None and reply_id != 0
                 
-                self.log_message(msg_from_id, msg_to_id, message_content, is_reply=is_reply)
+                # Extract hop count (hopLimit - current hopStart gives hops taken)
+                hop_limit = packet.get("hopLimit", 0)
+                hop_start = packet.get("hopStart", hop_limit)
+                hops_taken = hop_start - hop_limit if hop_start >= hop_limit else 0
+                
+                self.log_message(msg_from_id, msg_to_id, message_content, is_reply=is_reply, hop_count=hops_taken)
 
-    def log_message(self, from_id: str, to_id: str, content: str, is_reply: bool = False):
+    def log_message(self, from_id: str, to_id: str, content: str, is_reply: bool = False, hop_count: int = 0):
         """Add a message to the table."""
         if not content or not content.strip():
             return
@@ -684,11 +702,25 @@ class ChatMonitor(App):
         if is_reply:
             content = "↩ " + content
 
-        table.add_row(timestamp, from_display, to_display, content)
+        # Store complete metadata (always preserve hop count)
+        self.message_metadata.append({
+            "timestamp": timestamp,
+            "from": from_display,
+            "to": to_display,
+            "hops": str(hop_count),
+            "message": content,
+        })
+
+        # Add row with or without hop count based on column visibility
+        if self.show_hop_column:
+            table.add_row(timestamp, from_display, to_display, str(hop_count), content)
+        else:
+            table.add_row(timestamp, from_display, to_display, content)
 
         # Keep only last MAX_MESSAGES
         if table.row_count > MAX_MESSAGES:
             table.remove_row(table.rows[0].key)
+            self.message_metadata.pop(0)
 
         # Scroll to bottom
         table.scroll_end(animate=False)
@@ -703,11 +735,25 @@ class ChatMonitor(App):
 
         style_class = "error-message" if error else "system-message"
 
-        table.add_row(timestamp, "[SYSTEM]", "", message)
+        # Store complete metadata
+        self.message_metadata.append({
+            "timestamp": timestamp,
+            "from": "[SYSTEM]",
+            "to": "",
+            "hops": "",
+            "message": message,
+        })
+
+        # Add row with or without hop count based on column visibility
+        if self.show_hop_column:
+            table.add_row(timestamp, "[SYSTEM]", "", "", message)
+        else:
+            table.add_row(timestamp, "[SYSTEM]", "", message)
 
         # Keep only last MAX_MESSAGES
         if table.row_count > MAX_MESSAGES:
             table.remove_row(table.rows[0].key)
+            self.message_metadata.pop(0)
 
         # Scroll to bottom
         table.scroll_end(animate=False)
@@ -723,11 +769,25 @@ class ChatMonitor(App):
         else:
             message = f"Discovered: {node_id}"
         
-        table.add_row(timestamp, "[NODE]", node_id, message)
+        # Store complete metadata
+        self.message_metadata.append({
+            "timestamp": timestamp,
+            "from": "[NODE]",
+            "to": node_id,
+            "hops": "",
+            "message": message,
+        })
+        
+        # Add row with or without hop count based on column visibility
+        if self.show_hop_column:
+            table.add_row(timestamp, "[NODE]", node_id, "", message)
+        else:
+            table.add_row(timestamp, "[NODE]", node_id, message)
 
         # Keep only last MAX_MESSAGES
         if table.row_count > MAX_MESSAGES:
             table.remove_row(table.rows[0].key)
+            self.message_metadata.pop(0)
 
         # Scroll to bottom
         table.scroll_end(animate=False)
@@ -912,6 +972,26 @@ class ChatMonitor(App):
                 self.exit()
 
         self.push_screen(QuitConfirmScreen(), handle_quit_response)
+
+    def action_toggle_hop_column(self) -> None:
+        """Toggle the visibility of the hop count column."""
+        table = self.query_one("#messages-table", DataTable)
+        
+        # Toggle the state
+        self.show_hop_column = not self.show_hop_column
+        
+        # Rebuild columns
+        self._setup_table_columns()
+        
+        # Restore all messages from metadata (which always has hop counts)
+        for msg in self.message_metadata:
+            if self.show_hop_column:
+                table.add_row(msg["timestamp"], msg["from"], msg["to"], msg["hops"], msg["message"])
+            else:
+                table.add_row(msg["timestamp"], msg["from"], msg["to"], msg["message"])
+        
+        status = "shown" if self.show_hop_column else "hidden"
+        self.log_system(f"Hop count column {status}")
 
     def action_show_node_list(self) -> None:
         """Show the node list dialog."""
