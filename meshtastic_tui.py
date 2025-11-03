@@ -989,9 +989,6 @@ class ChatMonitor(App):
                 table.add_row(msg["timestamp"], msg["from"], msg["to"], msg["hops"], msg["message"])
             else:
                 table.add_row(msg["timestamp"], msg["from"], msg["to"], msg["message"])
-        
-        status = "shown" if self.show_hop_column else "hidden"
-        self.log_system(f"Hop count column {status}")
 
     def action_show_node_list(self) -> None:
         """Show the node list dialog."""
