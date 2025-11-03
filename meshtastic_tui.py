@@ -125,7 +125,7 @@ class ChatMonitor(App):
             parts.append(f"ChUtil: {self.channel_util:.1f}%")
 
         if self.battery_level > 100:
-            parts.append("PWRD")
+            parts.append("Powered")
         elif self.battery_level > 0:
             parts.append(f"Batt: {self.battery_level}%")
         elif self.voltage > 0:
