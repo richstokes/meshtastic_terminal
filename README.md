@@ -21,6 +21,7 @@ Meshtastic Terminal is a modern terminal UI for real-time communication over Mes
 - Automatically reconnects if the device is disconnected / your computer sleeps
 - Ability to switch radio presets/modes and frequency slots on the fly
 - Node list - press ctrl+n to view the list of discovered nodes / view details
+- Raw monitor mode - press ctrl+r to toggle raw packet monitor mode
 - Theme support - press ctrl+p to open the theme selector
 
 ## Prerequisites

@@ -253,14 +253,50 @@ class RawMonitorScreen(ModalScreen):
         
         packet_type = packet_type_map.get(portnum, "unknown")
         
-        # Update activity timestamp and packet type for this node
-        self.node_activity[from_id] = {
-            "time": datetime.now(),
-            "packet_type": packet_type
+        # Priority order for packet types (higher priority = more important to display)
+        # Text messages should be prioritized over position/telemetry since they're user-initiated
+        priority_map = {
+            "text": 5,
+            "traceroute": 4,
+            "position": 3,
+            "nodeinfo": 2,
+            "telemetry": 1,
+            "routing": 1,
+            "unknown": 1,
         }
         
-        # Trigger grid update
-        self.call_after_refresh(self.update_grid_display)
+        current_time = datetime.now()
+        
+        # Only update if:
+        # 1. Node is new, OR
+        # 2. New packet type has higher priority, OR
+        # 3. Same or lower priority but previous activity was >2 seconds ago
+        should_update = False
+        
+        if from_id not in self.node_activity:
+            # New node
+            should_update = True
+        else:
+            existing = self.node_activity[from_id]
+            time_since_last = (current_time - existing["time"]).total_seconds()
+            new_priority = priority_map.get(packet_type, 1)
+            old_priority = priority_map.get(existing["packet_type"], 1)
+            
+            if new_priority > old_priority:
+                # Higher priority packet
+                should_update = True
+            elif time_since_last > 2.0:
+                # Enough time has passed, update with new type
+                should_update = True
+        
+        if should_update:
+            self.node_activity[from_id] = {
+                "time": current_time,
+                "packet_type": packet_type
+            }
+            
+            # Trigger grid update
+            self.call_after_refresh(self.update_grid_display)
     
     def update_grid_display(self) -> None:
         """Update the grid display with current node activity."""
