@@ -8,6 +8,7 @@ from .user_selector import UserSelectorScreen
 from .serial_port_selector import SerialPortSelectorScreen
 from .node_list import NodeListScreen
 from .node_detail import NodeDetailScreen
+from .raw_monitor import RawMonitorScreen
 
 __all__ = [
     "PresetSelectorScreen",
@@ -19,4 +20,5 @@ __all__ = [
     "SerialPortSelectorScreen",
     "NodeListScreen",
     "NodeDetailScreen",
+    "RawMonitorScreen",
 ]
