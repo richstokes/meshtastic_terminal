@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 import argparse
 import asyncio
+import signal
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 import meshtastic
 import meshtastic.serial_interface
+import meshtastic.ble_interface
 import serial.tools.list_ports
 from pubsub import pub
 from textual.app import App, ComposeResult
@@ -25,6 +27,7 @@ from modals import (
     UserNameSetterScreen,
     UserSelectorScreen,
     SerialPortSelectorScreen,
+    BleDeviceSelectorScreen,
     NodeListScreen,
     RawMonitorScreen,
 )
@@ -68,7 +71,7 @@ class ChatMonitor(App):
     is_connected: reactive[bool] = reactive(False)
     show_hop_column: reactive[bool] = reactive(False)
 
-    def __init__(self, auto_connect: bool = False):
+    def __init__(self, auto_connect: bool = False, use_ble: bool = False):
         super().__init__()
         self.iface = None
         self.my_node_id = None
@@ -87,7 +90,9 @@ class ChatMonitor(App):
         self.stats_worker = None  # Track the stats update worker
         self.last_packet_received = None  # Track last time we received any packet
         self.selected_serial_port = None  # Track the selected serial port
+        self.selected_ble_address = None  # Track the selected BLE device address
         self.auto_connect = auto_connect  # Whether to auto-connect to first port
+        self.use_ble = use_ble  # Whether to use BLE instead of serial
         self.message_metadata = []  # Store full message data including hop counts
 
     def compose(self) -> ComposeResult:
@@ -156,11 +161,18 @@ class ChatMonitor(App):
         # Set initial node count (now that widgets are mounted)
         self.node_count = len(self.known_nodes)
 
-        # Auto-connect or show port selector
+        # Auto-connect or show port/device selector
         if self.auto_connect:
-            self.auto_connect_first_port()
+            if self.use_ble:
+                self.log_system("Auto-connect not supported for BLE, showing device selector")
+                self.show_ble_selector()
+            else:
+                self.auto_connect_first_port()
         else:
-            self.show_port_selector()
+            if self.use_ble:
+                self.show_ble_selector()
+            else:
+                self.show_port_selector()
 
     def check_action_state(self, action: str) -> bool:
         """Check if an action should be enabled based on connection state."""
@@ -337,22 +349,55 @@ class ChatMonitor(App):
 
         self.push_screen(SerialPortSelectorScreen(), handle_port_selection)
 
+    def show_ble_selector(self) -> None:
+        """Show BLE device selector dialog on launch."""
+        def handle_ble_selection(selected_address) -> None:
+            """Handle BLE device selection from the modal."""
+            if selected_address is False:
+                # User cancelled
+                self.log_system("Connection cancelled by user", error=True)
+                self.exit()
+            else:
+                # selected_address is the BLE device address
+                self.selected_ble_address = selected_address
+                # Connect to device in the background
+                self.run_worker(self.connect_device(), exclusive=True)
+
+        self.push_screen(BleDeviceSelectorScreen(), handle_ble_selection)
+
     async def connect_device(self) -> None:
         """Connect to Meshtastic device."""
-        if self.selected_serial_port:
-            self.log_system(f"Connecting to {self.selected_serial_port}...")
+        if self.use_ble:
+            if self.selected_ble_address:
+                self.log_system(f"Connecting to BLE device {self.selected_ble_address}...")
+            else:
+                self.log_system("Connecting to BLE device (auto-detect)...")
         else:
-            self.log_system("Connecting to device (auto-detect)...")
+            if self.selected_serial_port:
+                self.log_system(f"Connecting to {self.selected_serial_port}...")
+            else:
+                self.log_system("Connecting to device (auto-detect)...")
 
         try:
             # Run blocking meshtastic operations in executor
             loop = asyncio.get_event_loop()
-            self.iface = await loop.run_in_executor(
-                None,
-                lambda: meshtastic.serial_interface.SerialInterface(
-                    devPath=self.selected_serial_port
-                ),
-            )
+            
+            if self.use_ble:
+                # Connect via BLE
+                self.iface = await loop.run_in_executor(
+                    None,
+                    lambda: meshtastic.ble_interface.BLEInterface(
+                        address=self.selected_ble_address
+                    ),
+                )
+            else:
+                # Connect via Serial
+                self.iface = await loop.run_in_executor(
+                    None,
+                    lambda: meshtastic.serial_interface.SerialInterface(
+                        devPath=self.selected_serial_port
+                    ),
+                )
 
             self.log_system("Initializing connection...")
 
@@ -633,22 +678,8 @@ class ChatMonitor(App):
             # The meshtastic library updates iface.nodes automatically, so we can now
             # get the friendly name and log discovery if this is a new node
             if from_id and from_id != self.my_node_id and not from_id.startswith("^"):
-                # Get the friendly name (should be available now after NODEINFO)
-                node_name = self.get_node_display_name(from_id)
-                
-                # Check if this was previously known only by ID
-                was_unknown = from_id not in self.known_nodes
-                previously_unnamed = (
-                    from_id in self.known_nodes 
-                    and self.known_nodes[from_id].get("name") == from_id
-                )
-                
-                # Register/update the node
-                self.register_node(from_id, node_name if node_name != from_id else None)
-                
-                # Log discovery if new or if we just learned the name
-                if (was_unknown or previously_unnamed) and node_name != from_id:
-                    self.log_node_discovery(from_id, node_name)
+                # Process NODEINFO asynchronously to avoid blocking
+                self.run_worker(self._process_nodeinfo(from_id), exclusive=False)
             return
 
         if portnum in ignored_types:
@@ -682,6 +713,66 @@ class ChatMonitor(App):
                 hops_taken = hop_start - hop_limit if hop_start >= hop_limit else 0
                 
                 self.log_message(msg_from_id, msg_to_id, message_content, is_reply=is_reply, hop_count=hops_taken)
+
+    async def _process_nodeinfo(self, from_id: str) -> None:
+        """Process NODEINFO packet asynchronously to update node names.
+        
+        Args:
+            from_id: The node ID from the NODEINFO packet
+        """
+        # Wait a moment for the meshtastic library to update iface.nodes
+        await asyncio.sleep(0.1)
+        
+        # Get the friendly name (should be available now after NODEINFO)
+        node_name = self.get_node_display_name(from_id, use_cache=False)
+        
+        # Check if this was previously known only by ID
+        was_unknown = from_id not in self.known_nodes
+        previously_unnamed = (
+            from_id in self.known_nodes 
+            and self.known_nodes[from_id].get("name") == from_id
+        )
+        
+        # Get old name before updating
+        old_name = self.known_nodes.get(from_id, {}).get("name")
+        
+        # Register/update the node
+        self.register_node(from_id, node_name if node_name != from_id else None)
+        
+        # If we learned a new name for an existing node, update the message table
+        if previously_unnamed and node_name != from_id and old_name != node_name:
+            self._update_message_table_names(from_id, node_name)
+        
+        # Log discovery if new or if we just learned the name
+        if (was_unknown or previously_unnamed) and node_name != from_id:
+            self.log_node_discovery(from_id, node_name)
+
+    def _update_message_table_names(self, node_id: str, new_name: str) -> None:
+        """Update message table to replace old node ID with new friendly name.
+        
+        Args:
+            node_id: The raw node ID (e.g., "!9e9f4220")
+            new_name: The friendly name to replace it with
+        """
+        table = self.query_one("#messages-table", DataTable)
+        
+        # Update metadata
+        for msg in self.message_metadata:
+            if msg["from"] == node_id:
+                msg["from"] = new_name
+            if msg["to"] == node_id:
+                msg["to"] = new_name
+        
+        # Rebuild the table with updated names
+        table.clear()
+        for msg in self.message_metadata:
+            if self.show_hop_column:
+                table.add_row(msg["timestamp"], msg["from"], msg["to"], msg["hops"], msg["message"])
+            else:
+                table.add_row(msg["timestamp"], msg["from"], msg["to"], msg["message"])
+        
+        # Scroll to bottom
+        table.scroll_end(animate=False)
 
     def log_message(self, from_id: str, to_id: str, content: str, is_reply: bool = False, hop_count: int = 0):
         """Add a message to the table."""
@@ -1197,12 +1288,20 @@ class ChatMonitor(App):
 
                 # Try to reconnect
                 loop = asyncio.get_event_loop()
-                self.iface = await loop.run_in_executor(
-                    None,
-                    lambda: meshtastic.serial_interface.SerialInterface(
-                        devPath=self.selected_serial_port
-                    ),
-                )
+                if self.use_ble:
+                    self.iface = await loop.run_in_executor(
+                        None,
+                        lambda: meshtastic.ble_interface.BLEInterface(
+                            address=self.selected_ble_address
+                        ),
+                    )
+                else:
+                    self.iface = await loop.run_in_executor(
+                        None,
+                        lambda: meshtastic.serial_interface.SerialInterface(
+                            devPath=self.selected_serial_port
+                        ),
+                    )
 
                 # Re-subscribe to events
                 self.subscribe_to_events()
@@ -1281,12 +1380,20 @@ class ChatMonitor(App):
 
                 # Try to reconnect
                 loop = asyncio.get_event_loop()
-                self.iface = await loop.run_in_executor(
-                    None,
-                    lambda: meshtastic.serial_interface.SerialInterface(
-                        devPath=self.selected_serial_port
-                    ),
-                )
+                if self.use_ble:
+                    self.iface = await loop.run_in_executor(
+                        None,
+                        lambda: meshtastic.ble_interface.BLEInterface(
+                            address=self.selected_ble_address
+                        ),
+                    )
+                else:
+                    self.iface = await loop.run_in_executor(
+                        None,
+                        lambda: meshtastic.serial_interface.SerialInterface(
+                            devPath=self.selected_serial_port
+                        ),
+                    )
 
                 # Re-subscribe to events (important!)
                 self.subscribe_to_events()
@@ -1392,11 +1499,28 @@ class ChatMonitor(App):
         except Exception:
             pass
 
-        # Close interface
+        # Close interface - for BLE use a quick timeout to avoid hanging
         if self.iface:
             try:
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(None, self.iface.close)
+                # Stop receive thread first
+                if hasattr(self.iface, '_want_receive'):
+                    self.iface._want_receive = False
+                
+                # For BLE, use a timeout to prevent hanging on disconnect
+                if self.use_ble:
+                    loop = asyncio.get_event_loop()
+                    try:
+                        await asyncio.wait_for(
+                            loop.run_in_executor(None, self.iface.close),
+                            timeout=1.0
+                        )
+                    except asyncio.TimeoutError:
+                        # Force close if timeout
+                        pass
+                else:
+                    # Serial can be closed normally
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(None, self.iface.close)
             except Exception:
                 pass
 
@@ -1411,9 +1535,34 @@ def main():
         action="store_true",
         help="Auto-connect to the first available serial port"
     )
+    parser.add_argument(
+        "-b", "--ble",
+        action="store_true",
+        help="Use Bluetooth LE instead of serial connection"
+    )
     args = parser.parse_args()
     
-    app = ChatMonitor(auto_connect=args.auto_connect)
+    app = ChatMonitor(auto_connect=args.auto_connect, use_ble=args.ble)
+    
+    # For BLE connections, set up a signal handler to exit quickly on Ctrl+C
+    if args.ble:
+        original_sigint = signal.getsignal(signal.SIGINT)
+        
+        def handle_sigint(signum, frame):
+            """Handle SIGINT for BLE - exit immediately to avoid atexit hang."""
+            # Try to stop the interface quickly
+            if app.iface and hasattr(app.iface, '_want_receive'):
+                try:
+                    app.iface._want_receive = False
+                except Exception:
+                    pass
+            
+            # Use os._exit to skip atexit handlers that cause hanging
+            import os
+            os._exit(0)
+        
+        signal.signal(signal.SIGINT, handle_sigint)
+    
     app.run()
 
 

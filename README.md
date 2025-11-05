@@ -93,6 +93,14 @@ OR to auto-detect and connect to the first detected Meshtastic device:
 uv run python meshtastic_tui.py -a
 ```
 
+#### BLE / Bluetooth connection
+
+To connect to a Meshtastic device over Bluetooth, use the `-b` flag:
+
+```bash
+uv run python meshtastic_tui.py -b
+```
+
 ## Contributing
 
 Feel free to submit issues or pull requests to improve these scripts!

@@ -4,7 +4,12 @@ version = "0.1.0"
 description = "A modern terminal UI for real-time communication over Meshtastic mesh networks"
 readme = "README.md"
 requires-python = ">=3.8"
-dependencies = ["meshtastic>=2.0.0", "pypubsub>=4.0.3", "textual>=0.47.0"]
+dependencies = [
+    "bleak>=0.21.1",
+    "meshtastic>=2.0.0",
+    "pypubsub>=4.0.3",
+    "textual>=0.47.0",
+]
 keywords = ["meshtastic", "terminal", "tui", "mesh", "radio", "lora"]
 classifiers = [
     "Development Status :: 4 - Beta",

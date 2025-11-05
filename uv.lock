@@ -479,6 +479,8 @@ name = "meshtastic-terminal"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "bleak", version = "0.21.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "bleak", version = "0.22.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
     { name = "meshtastic", version = "2.3.14", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "meshtastic", version = "2.7.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
     { name = "pypubsub" },
@@ -489,6 +491,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "bleak", specifier = ">=0.21.1" },
     { name = "meshtastic", specifier = ">=2.0.0" },
     { name = "pypubsub", specifier = ">=4.0.3" },
     { name = "textual", specifier = ">=0.47.0" },

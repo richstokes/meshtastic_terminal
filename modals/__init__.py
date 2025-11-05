@@ -6,6 +6,7 @@ from .quit_confirm import QuitConfirmScreen
 from .user_name_setter import UserNameSetterScreen
 from .user_selector import UserSelectorScreen
 from .serial_port_selector import SerialPortSelectorScreen
+from .ble_device_selector import BleDeviceSelectorScreen
 from .node_list import NodeListScreen
 from .node_detail import NodeDetailScreen
 from .raw_monitor import RawMonitorScreen
@@ -18,6 +19,7 @@ __all__ = [
     "UserNameSetterScreen",
     "UserSelectorScreen",
     "SerialPortSelectorScreen",
+    "BleDeviceSelectorScreen",
     "NodeListScreen",
     "NodeDetailScreen",
     "RawMonitorScreen",
