@@ -1073,6 +1073,11 @@ class ChatMonitor(App):
         try:
             loop = asyncio.get_event_loop()
             
+            # Determine if this is a direct message (to a specific node) vs broadcast
+            # Direct messages should use wantAck=True for delivery confirmation
+            is_broadcast = dest.startswith("^")  # Channels start with ^
+            want_ack = not is_broadcast  # Request ACK for direct messages only
+            
             # Send with or without reply ID
             if reply_id:
                 await loop.run_in_executor(
@@ -1080,14 +1085,14 @@ class ChatMonitor(App):
                     lambda: self.iface.sendText(
                         message, 
                         destinationId=dest, 
-                        wantAck=False,
+                        wantAck=want_ack,
                         replyId=reply_id
                     ),
                 )
             else:
                 await loop.run_in_executor(
                     None,
-                    lambda: self.iface.sendText(message, destinationId=dest, wantAck=False),
+                    lambda: self.iface.sendText(message, destinationId=dest, wantAck=want_ack),
                 )
             
             # Log the sent message in the stream as if it was a regular message
