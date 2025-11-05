@@ -147,7 +147,7 @@ class ChatMonitor(App):
         """Set up table columns based on show_hop_column state."""
         table = self.query_one("#messages-table", DataTable)
         table.clear(columns=True)
-        
+
         if self.show_hop_column:
             table.add_columns("Time", "From", "To", "Hops", "Message")
         else:
@@ -167,7 +167,9 @@ class ChatMonitor(App):
         # Auto-connect or show port/device selector
         if self.auto_connect:
             if self.use_ble:
-                self.log_system("Auto-connect not supported for BLE, showing device selector")
+                self.log_system(
+                    "Auto-connect not supported for BLE, showing device selector"
+                )
                 self.show_ble_selector()
             else:
                 self.auto_connect_first_port()
@@ -211,10 +213,10 @@ class ChatMonitor(App):
     def _normalize_node_id(self, packet) -> Optional[str]:
         """
         Extract and normalize node ID from packet to string format.
-        
+
         Args:
             packet: The packet dictionary containing 'fromId'/'from' or 'toId'/'to'
-            
+
         Returns:
             Normalized string ID (e.g., "!9bb3634b") or None if not found
         """
@@ -222,7 +224,7 @@ class ChatMonitor(App):
         node_id = packet.get("fromId") or packet.get("toId")
         if node_id:
             return node_id
-        
+
         # Fall back to numeric ID (from or to)
         node_num = packet.get("from") or packet.get("to")
         if node_num:
@@ -232,44 +234,44 @@ class ChatMonitor(App):
                 return node_info.get("user", {}).get("id") or f"!{node_num:08x}"
             else:
                 return f"!{node_num:08x}"
-        
+
         return None
 
     def get_node_display_name(self, node_id: str, use_cache: bool = True) -> str:
         """Get a friendly display name for a node.
-        
+
         This method centralizes the name resolution logic:
         1. Check known_nodes cache (if use_cache=True)
         2. Fallback to iface.nodes database
         3. Cache newly found names
         4. Return node_id if no friendly name found
-        
+
         Args:
             node_id: The node ID to get display name for
             use_cache: Whether to check and update the cache (default True)
-            
+
         Returns:
             The friendly display name or node_id if not found
         """
         if not node_id:
             return "unknown"
-            
+
         # Try cache first if enabled
         if use_cache:
             cached_name = self.known_nodes.get(node_id, {}).get("name")
             if cached_name and cached_name != node_id:
                 return cached_name
-        
+
         # Fallback to interface's node database
         friendly_name = None
         if hasattr(self.iface, "nodes") and self.iface and node_id in self.iface.nodes:
             user_info = self.iface.nodes[node_id].get("user", {})
             friendly_name = user_info.get("longName") or user_info.get("shortName")
-            
+
             # Cache it for future lookups
             if friendly_name and use_cache:
                 self.register_node(node_id, friendly_name)
-        
+
         return friendly_name or node_id
 
     def register_node(self, node_id: str, node_name: str = None) -> bool:
@@ -284,11 +286,11 @@ class ChatMonitor(App):
             True if this is a newly discovered node, False if already known
         """
         is_new = node_id not in self.known_nodes
-        
+
         # Determine the best name to use
         # Priority: new non-trivial name > existing name > node_id
         existing_name = self.known_nodes.get(node_id, {}).get("name")
-        
+
         # Only update name if new name is better than existing
         if node_name and node_name != node_id:
             # New name is good, use it
@@ -317,17 +319,20 @@ class ChatMonitor(App):
         """Auto-connect to the first available serial port."""
         # Get available serial ports
         ports = serial.tools.list_ports.comports()
-        
+
         # Filter out typical non-device ports
         filtered_ports = [
-            p for p in ports 
-            if not any(skip in p.device.lower() for skip in ['bluetooth', 'debug'])
+            p
+            for p in ports
+            if not any(skip in p.device.lower() for skip in ["bluetooth", "debug"])
         ]
-        
+
         if filtered_ports:
             # Use the first available port
             self.selected_serial_port = filtered_ports[0].device
-            self.log_system(f"Auto-connecting to first port: {self.selected_serial_port}")
+            self.log_system(
+                f"Auto-connecting to first port: {self.selected_serial_port}"
+            )
             # Connect to device in the background
             self.run_worker(self.connect_device(), exclusive=True)
         else:
@@ -338,6 +343,7 @@ class ChatMonitor(App):
 
     def show_port_selector(self) -> None:
         """Show serial port selector dialog on launch."""
+
         def handle_port_selection(selected_port) -> None:
             """Handle port selection from the modal."""
             if selected_port is False:
@@ -354,6 +360,7 @@ class ChatMonitor(App):
 
     def show_ble_selector(self) -> None:
         """Show BLE device selector dialog on launch."""
+
         def handle_ble_selection(selected_address) -> None:
             """Handle BLE device selection from the modal."""
             if selected_address is False:
@@ -372,7 +379,9 @@ class ChatMonitor(App):
         """Connect to Meshtastic device."""
         if self.use_ble:
             if self.selected_ble_address:
-                self.log_system(f"Connecting to BLE device {self.selected_ble_address}...")
+                self.log_system(
+                    f"Connecting to BLE device {self.selected_ble_address}..."
+                )
             else:
                 self.log_system("Connecting to BLE device (auto-detect)...")
         else:
@@ -384,7 +393,7 @@ class ChatMonitor(App):
         try:
             # Run blocking meshtastic operations in executor
             loop = asyncio.get_event_loop()
-            
+
             if self.use_ble:
                 # Connect via BLE
                 self.iface = await loop.run_in_executor(
@@ -416,7 +425,7 @@ class ChatMonitor(App):
 
             # Store our node ID early (needed for registration logic)
             self.my_node_id = info["user"]["id"]
-            
+
             # Store current user names
             self.current_long_name = info["user"].get("longName", "")
             self.current_short_name = info["user"].get("shortName", "")
@@ -431,9 +440,8 @@ class ChatMonitor(App):
                     for node_id, node_info in self.iface.nodes.items():
                         if node_id != self.my_node_id:  # Skip our own node
                             user_info = node_info.get("user", {})
-                            node_name = (
-                                user_info.get("longName")
-                                or user_info.get("shortName")
+                            node_name = user_info.get("longName") or user_info.get(
+                                "shortName"
                             )
                             # Register node from device database using consistent method
                             self.register_node(node_id, node_name)
@@ -452,7 +460,7 @@ class ChatMonitor(App):
                 # Get the modem preset/config
                 if hasattr(self.iface, "localNode") and self.iface.localNode:
                     local_config = self.iface.localNode.localConfig
-                    
+
                     # Log device role/mode
                     if local_config and hasattr(local_config, "device"):
                         device_config = local_config.device
@@ -480,7 +488,7 @@ class ChatMonitor(App):
                                     role_value, f"Unknown ({role_value})"
                                 )
                             self.log_system(f"Device mode: {role_name}")
-                    
+
                     if local_config and hasattr(local_config, "lora"):
                         lora_config = local_config.lora
                         if hasattr(lora_config, "modem_preset"):
@@ -628,21 +636,23 @@ class ChatMonitor(App):
         """Monitor received packets."""
         # Update last packet timestamp for connection health monitoring
         self.last_packet_received = datetime.now()
-        
+
         decoded = packet.get("decoded", {})
         portnum = decoded.get("portnum", "unknown")
 
         # Check for new nodes from sender only (not destination)
-        from_id = self._normalize_node_id({"fromId": packet.get("fromId"), "from": packet.get("from")})
-        
+        from_id = self._normalize_node_id(
+            {"fromId": packet.get("fromId"), "from": packet.get("from")}
+        )
+
         if from_id and from_id != self.my_node_id and not from_id.startswith("^"):
             # Register the node first (this tracks it even if we don't have a name yet)
             is_new = self.register_node(from_id, None)
-            
+
             # Try to get a friendly name from the interface's node database
             # This will work if the node info was already received previously
             node_name = self.get_node_display_name(from_id, use_cache=False)
-            
+
             # If we got a friendly name (not just the ID), update the node and log discovery
             if node_name != from_id:
                 self.register_node(from_id, node_name)
@@ -710,47 +720,64 @@ class ChatMonitor(App):
 
             if message_content:
                 # Extract and normalize sender/receiver IDs
-                msg_from_id = self._normalize_node_id({"fromId": packet.get("fromId"), "from": packet.get("from")}) or "unknown"
-                msg_to_id = self._normalize_node_id({"toId": packet.get("toId"), "to": packet.get("to")}) or "unknown"
-                
+                msg_from_id = (
+                    self._normalize_node_id(
+                        {"fromId": packet.get("fromId"), "from": packet.get("from")}
+                    )
+                    or "unknown"
+                )
+                msg_to_id = (
+                    self._normalize_node_id(
+                        {"toId": packet.get("toId"), "to": packet.get("to")}
+                    )
+                    or "unknown"
+                )
+
                 # Check if this is a reply (has replyId field)
                 reply_id = decoded.get("replyId") or packet.get("replyId")
                 is_reply = reply_id is not None and reply_id != 0
-                
+
                 # Extract hop count (hopLimit - current hopStart gives hops taken)
                 hop_limit = packet.get("hopLimit", 0)
                 hop_start = packet.get("hopStart", hop_limit)
                 hops_taken = hop_start - hop_limit if hop_start >= hop_limit else 0
-                
+
                 # Get packet ID for reply support
                 packet_id = packet.get("id", 0)
-                
-                self.log_message(msg_from_id, msg_to_id, message_content, is_reply=is_reply, hop_count=hops_taken, packet_id=packet_id)
+
+                self.log_message(
+                    msg_from_id,
+                    msg_to_id,
+                    message_content,
+                    is_reply=is_reply,
+                    hop_count=hops_taken,
+                    packet_id=packet_id,
+                )
 
     async def _process_nodeinfo(self, from_id: str) -> None:
         """Process NODEINFO packet asynchronously to update node names.
-        
+
         Args:
             from_id: The node ID from the NODEINFO packet
         """
         # Wait a moment for the meshtastic library to update iface.nodes
         await asyncio.sleep(0.1)
-        
+
         # Get old name before fetching new one
         old_name = self.known_nodes.get(from_id, {}).get("name", from_id)
-        
+
         # Get the friendly name (should be available now after NODEINFO)
         node_name = self.get_node_display_name(from_id, use_cache=False)
-        
+
         # Check if we're learning a new name (not just the node ID)
         learning_new_name = (
             node_name != from_id  # We got a real friendly name
             and old_name == from_id  # Previously only had the ID
         )
-        
+
         # Register/update the node
         self.register_node(from_id, node_name if node_name != from_id else None)
-        
+
         # If we learned a new name for an existing node, update the message table
         if learning_new_name:
             self._update_message_table_names(from_id, node_name)
@@ -759,32 +786,46 @@ class ChatMonitor(App):
 
     def _update_message_table_names(self, node_id: str, new_name: str) -> None:
         """Update message table to replace old node ID with new friendly name.
-        
+
         Args:
             node_id: The raw node ID (e.g., "!9e9f4220")
             new_name: The friendly name to replace it with
         """
         table = self.query_one("#messages-table", DataTable)
-        
+
         # Update metadata
         for msg in self.message_metadata:
             if msg["from"] == node_id:
                 msg["from"] = new_name
             if msg["to"] == node_id:
                 msg["to"] = new_name
-        
+
         # Rebuild the table with updated names
         table.clear()
         for msg in self.message_metadata:
             if self.show_hop_column:
-                table.add_row(msg["timestamp"], msg["from"], msg["to"], msg["hops"], msg["message"])
+                table.add_row(
+                    msg["timestamp"],
+                    msg["from"],
+                    msg["to"],
+                    msg["hops"],
+                    msg["message"],
+                )
             else:
                 table.add_row(msg["timestamp"], msg["from"], msg["to"], msg["message"])
-        
+
         # Scroll to bottom
         table.scroll_end(animate=False)
 
-    def log_message(self, from_id: str, to_id: str, content: str, is_reply: bool = False, hop_count: int = 0, packet_id: int = 0):
+    def log_message(
+        self,
+        from_id: str,
+        to_id: str,
+        content: str,
+        is_reply: bool = False,
+        hop_count: int = 0,
+        packet_id: int = 0,
+    ):
         """Add a message to the table."""
         if not content or not content.strip():
             return
@@ -807,16 +848,18 @@ class ChatMonitor(App):
             content = "↩ " + content
 
         # Store complete metadata (always preserve hop count and reply info)
-        self.message_metadata.append({
-            "timestamp": timestamp,
-            "from": from_display,
-            "to": to_display,
-            "from_id": from_id,  # Store raw node ID for replies
-            "to_id": to_id,  # Store raw destination for replies
-            "hops": str(hop_count),
-            "message": content,
-            "packet_id": packet_id,  # Store packet ID for replies
-        })
+        self.message_metadata.append(
+            {
+                "timestamp": timestamp,
+                "from": from_display,
+                "to": to_display,
+                "from_id": from_id,  # Store raw node ID for replies
+                "to_id": to_id,  # Store raw destination for replies
+                "hops": str(hop_count),
+                "message": content,
+                "packet_id": packet_id,  # Store packet ID for replies
+            }
+        )
 
         # Add row with or without hop count based on column visibility
         if self.show_hop_column:
@@ -843,16 +886,18 @@ class ChatMonitor(App):
         style_class = "error-message" if error else "system-message"
 
         # Store complete metadata
-        self.message_metadata.append({
-            "timestamp": timestamp,
-            "from": "[SYSTEM]",
-            "to": "",
-            "from_id": "[SYSTEM]",
-            "to_id": "",
-            "hops": "",
-            "message": message,
-            "packet_id": 0,
-        })
+        self.message_metadata.append(
+            {
+                "timestamp": timestamp,
+                "from": "[SYSTEM]",
+                "to": "",
+                "from_id": "[SYSTEM]",
+                "to_id": "",
+                "hops": "",
+                "message": message,
+                "packet_id": 0,
+            }
+        )
 
         # Add row with or without hop count based on column visibility
         if self.show_hop_column:
@@ -875,22 +920,24 @@ class ChatMonitor(App):
 
         # Show both friendly name and node ID for clarity
         if node_name and node_name != node_id:
-            message = f"Discovered: {node_name} ({node_id})"
+            message = f"Discovered: {node_name}"
         else:
             message = f"Discovered: {node_id}"
-        
+
         # Store complete metadata
-        self.message_metadata.append({
-            "timestamp": timestamp,
-            "from": "[NODE]",
-            "to": node_id,
-            "from_id": "[NODE]",
-            "to_id": node_id,
-            "hops": "",
-            "message": message,
-            "packet_id": 0,
-        })
-        
+        self.message_metadata.append(
+            {
+                "timestamp": timestamp,
+                "from": "[NODE]",
+                "to": node_id,
+                "from_id": "[NODE]",
+                "to_id": node_id,
+                "hops": "",
+                "message": message,
+                "packet_id": 0,
+            }
+        )
+
         # Add row with or without hop count based on column visibility
         if self.show_hop_column:
             table.add_row(timestamp, "[NODE]", node_id, "", message)
@@ -973,9 +1020,16 @@ class ChatMonitor(App):
         input_widget.placeholder = "Type your message..."
         input_widget.focus()
 
-    def start_reply_input(self, packet_id: int, original_from: str, original_to: str, original_from_display: str, original_message: str) -> None:
+    def start_reply_input(
+        self,
+        packet_id: int,
+        original_from: str,
+        original_to: str,
+        original_from_display: str,
+        original_message: str,
+    ) -> None:
         """Start reply input for a specific message.
-        
+
         Args:
             packet_id: The packet ID of the message to reply to
             original_from: The raw node ID of the original sender
@@ -988,12 +1042,12 @@ class ChatMonitor(App):
 
         self.input_mode = True
         self.current_input_step = "message"  # Skip destination step
-        
+
         # Store reply context
         self.reply_to_packet_id = packet_id
         self.reply_to_from_id = original_from
         self.reply_to_channel = original_to
-        
+
         # Determine where to send the reply:
         # - If original was to a channel (^all or starts with ^), reply to that channel
         # - If original was a DM to us, reply directly to sender
@@ -1016,11 +1070,17 @@ class ChatMonitor(App):
         container.add_class("visible")
 
         # Truncate message preview if too long
-        msg_preview = original_message[:50] + "..." if len(original_message) > 50 else original_message
-        
+        msg_preview = (
+            original_message[:50] + "..."
+            if len(original_message) > 50
+            else original_message
+        )
+
         # Update label and focus input
         label = self.query_one("#input-label", Static)
-        label.update(f"Reply to {original_from_display} → {dest_display}: \"{msg_preview}\"")
+        label.update(
+            f'Reply to {original_from_display} → {dest_display}: "{msg_preview}"'
+        )
 
         input_widget = self.query_one("#user-input", Input)
         input_widget.value = ""
@@ -1055,9 +1115,9 @@ class ChatMonitor(App):
                 # Run async send in background (with reply ID if applicable)
                 self.run_worker(
                     self.send_text_message(
-                        self.dest_input, 
+                        self.dest_input,
                         self.message_input,
-                        reply_id=self.reply_to_packet_id
+                        reply_id=self.reply_to_packet_id,
                     ),
                     exclusive=False,
                 )
@@ -1066,9 +1126,11 @@ class ChatMonitor(App):
 
             self.cancel_input()
 
-    async def send_text_message(self, dest: str, message: str, reply_id: int = None) -> None:
+    async def send_text_message(
+        self, dest: str, message: str, reply_id: int = None
+    ) -> None:
         """Send a text message, optionally as a reply.
-        
+
         Args:
             dest: Destination node ID or channel
             message: Message content
@@ -1076,38 +1138,44 @@ class ChatMonitor(App):
         """
         try:
             loop = asyncio.get_event_loop()
-            
+
             # Determine if this is a direct message (to a specific node) vs broadcast
             # Direct messages should use wantAck=True for delivery confirmation
             is_broadcast = dest.startswith("^")  # Channels start with ^
             want_ack = not is_broadcast  # Request ACK for direct messages only
-            
+
             # Send with or without reply ID
             if reply_id:
                 await loop.run_in_executor(
                     None,
                     lambda: self.iface.sendText(
-                        message, 
-                        destinationId=dest, 
-                        wantAck=want_ack,
-                        replyId=reply_id
+                        message, destinationId=dest, wantAck=want_ack, replyId=reply_id
                     ),
                 )
             else:
                 await loop.run_in_executor(
                     None,
-                    lambda: self.iface.sendText(message, destinationId=dest, wantAck=want_ack),
+                    lambda: self.iface.sendText(
+                        message, destinationId=dest, wantAck=want_ack
+                    ),
                 )
-            
+
             # Log the sent message in the stream as if it was a regular message
             # Mark as reply if we're replying
-            self.log_message(self.my_node_id or "You", dest, message, is_reply=(reply_id is not None))
+            self.log_message(
+                self.my_node_id or "You", dest, message, is_reply=(reply_id is not None)
+            )
         except Exception as e:
             import traceback
+
             # Debug logging on failure
             msg_type = "broadcast" if dest.startswith("^") else "direct message"
-            dest_display = self.get_node_display_name(dest) if not dest.startswith("^") else dest
-            self.log_system(f"Failed to send {msg_type} to {dest_display} (ID: {dest})", error=True)
+            dest_display = (
+                self.get_node_display_name(dest) if not dest.startswith("^") else dest
+            )
+            self.log_system(
+                f"Failed to send {msg_type} to {dest_display} (ID: {dest})", error=True
+            )
             self.log_system(f"Error: {e}", error=True)
             self.log_system(f"Traceback: {traceback.format_exc()}", error=True)
 
@@ -1134,37 +1202,37 @@ class ChatMonitor(App):
         """Handle double-click on a message row to reply."""
         if not self.is_connected or self.input_mode:
             return
-        
+
         # Get the row index from the event
         row_index = event.cursor_row
-        
+
         # Make sure we have metadata for this row
         if row_index >= len(self.message_metadata):
             return
-        
+
         msg_data = self.message_metadata[row_index]
-        
+
         # Don't allow replying to system messages or discovery messages
         if msg_data["from"] in ["[SYSTEM]", "[NODE]"]:
             return
-        
+
         # Don't allow replying to our own messages
         if msg_data.get("from_id") == self.my_node_id:
             return
-        
+
         # Get packet ID - if not present, can't reply
         packet_id = msg_data.get("packet_id", 0)
         if not packet_id:
             self.log_system("Cannot reply to this message (no packet ID)", error=True)
             return
-        
+
         # Start reply mode
         self.start_reply_input(
             packet_id=packet_id,
             original_from=msg_data.get("from_id"),
             original_to=msg_data.get("to_id"),
             original_from_display=msg_data["from"],
-            original_message=msg_data["message"]
+            original_message=msg_data["message"],
         )
 
     def on_key(self, event) -> None:
@@ -1220,17 +1288,23 @@ class ChatMonitor(App):
     def action_toggle_hop_column(self) -> None:
         """Toggle the visibility of the hop count column."""
         table = self.query_one("#messages-table", DataTable)
-        
+
         # Toggle the state
         self.show_hop_column = not self.show_hop_column
-        
+
         # Rebuild columns
         self._setup_table_columns()
-        
+
         # Restore all messages from metadata (which always has hop counts)
         for msg in self.message_metadata:
             if self.show_hop_column:
-                table.add_row(msg["timestamp"], msg["from"], msg["to"], msg["hops"], msg["message"])
+                table.add_row(
+                    msg["timestamp"],
+                    msg["from"],
+                    msg["to"],
+                    msg["hops"],
+                    msg["message"],
+                )
             else:
                 table.add_row(msg["timestamp"], msg["from"], msg["to"], msg["message"])
 
@@ -1577,7 +1651,7 @@ class ChatMonitor(App):
         """Periodically request device telemetry and monitor connection health."""
         # Stale connection timeout: 5 minutes without any packets
         stale_timeout_seconds = 300
-        
+
         while True:
             try:
                 # Wait 30 seconds between updates
@@ -1589,15 +1663,17 @@ class ChatMonitor(App):
 
                 # Check if connection has gone stale (no packets received recently)
                 if self.last_packet_received:
-                    time_since_last_packet = (datetime.now() - self.last_packet_received).total_seconds()
-                    
+                    time_since_last_packet = (
+                        datetime.now() - self.last_packet_received
+                    ).total_seconds()
+
                     if time_since_last_packet > stale_timeout_seconds:
                         self.log_system(
                             f"No packets received for {int(time_since_last_packet)}s. Connection may be stale.",
-                            error=True
+                            error=True,
                         )
                         self.log_system("Triggering reconnection...", error=True)
-                        
+
                         # Manually trigger disconnect to start reconnection process
                         self.is_connected = False
                         self.on_disconnect()
@@ -1653,16 +1729,15 @@ class ChatMonitor(App):
         if self.iface:
             try:
                 # Stop receive thread first
-                if hasattr(self.iface, '_want_receive'):
+                if hasattr(self.iface, "_want_receive"):
                     self.iface._want_receive = False
-                
+
                 # For BLE, use a timeout to prevent hanging on disconnect
                 if self.use_ble:
                     loop = asyncio.get_event_loop()
                     try:
                         await asyncio.wait_for(
-                            loop.run_in_executor(None, self.iface.close),
-                            timeout=1.0
+                            loop.run_in_executor(None, self.iface.close), timeout=1.0
                         )
                     except asyncio.TimeoutError:
                         # Force close if timeout
@@ -1681,38 +1756,41 @@ def main():
         description="Meshtastic Terminal - A modern terminal UI for Meshtastic mesh networks"
     )
     parser.add_argument(
-        "-a", "--auto-connect",
+        "-a",
+        "--auto-connect",
         action="store_true",
-        help="Auto-connect to the first available serial port"
+        help="Auto-connect to the first available serial port",
     )
     parser.add_argument(
-        "-b", "--ble",
+        "-b",
+        "--ble",
         action="store_true",
-        help="Use Bluetooth LE instead of serial connection"
+        help="Use Bluetooth LE instead of serial connection",
     )
     args = parser.parse_args()
-    
+
     app = ChatMonitor(auto_connect=args.auto_connect, use_ble=args.ble)
-    
+
     # For BLE connections, set up a signal handler to exit quickly on Ctrl+C
     if args.ble:
         original_sigint = signal.getsignal(signal.SIGINT)
-        
+
         def handle_sigint(signum, frame):
             """Handle SIGINT for BLE - exit immediately to avoid atexit hang."""
             # Try to stop the interface quickly
-            if app.iface and hasattr(app.iface, '_want_receive'):
+            if app.iface and hasattr(app.iface, "_want_receive"):
                 try:
                     app.iface._want_receive = False
                 except Exception:
                     pass
-            
+
             # Use os._exit to skip atexit handlers that cause hanging
             import os
+
             os._exit(0)
-        
+
         signal.signal(signal.SIGINT, handle_sigint)
-    
+
     app.run()
 
 
