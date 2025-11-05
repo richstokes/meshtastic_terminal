@@ -1099,7 +1099,13 @@ class ChatMonitor(App):
             # Mark as reply if we're replying
             self.log_message(self.my_node_id or "You", dest, message, is_reply=(reply_id is not None))
         except Exception as e:
-            self.log_system(f"Failed to send: {e}", error=True)
+            import traceback
+            # Debug logging on failure
+            msg_type = "broadcast" if dest.startswith("^") else "direct message"
+            dest_display = self.get_node_display_name(dest) if not dest.startswith("^") else dest
+            self.log_system(f"Failed to send {msg_type} to {dest_display} (ID: {dest})", error=True)
+            self.log_system(f"Error: {e}", error=True)
+            self.log_system(f"Traceback: {traceback.format_exc()}", error=True)
 
     def cancel_input(self) -> None:
         """Cancel input mode."""
