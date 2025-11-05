@@ -636,12 +636,19 @@ class ChatMonitor(App):
         from_id = self._normalize_node_id({"fromId": packet.get("fromId"), "from": packet.get("from")})
         
         if from_id and from_id != self.my_node_id and not from_id.startswith("^"):
-            # Get node name and register if new (exclude channel names like ^all)
-            node_name = self.get_node_display_name(from_id)
-            is_new = self.register_node(from_id, node_name if node_name != from_id else None)
-            # Only log discovery if we have a friendly name (not just the node ID)
-            if is_new and node_name != from_id:
-                self.log_node_discovery(from_id, node_name)
+            # Register the node first (this tracks it even if we don't have a name yet)
+            is_new = self.register_node(from_id, None)
+            
+            # Try to get a friendly name from the interface's node database
+            # This will work if the node info was already received previously
+            node_name = self.get_node_display_name(from_id, use_cache=False)
+            
+            # If we got a friendly name (not just the ID), update the node and log discovery
+            if node_name != from_id:
+                self.register_node(from_id, node_name)
+                # Log discovery for newly seen nodes or nodes we just learned the name of
+                if is_new:
+                    self.log_node_discovery(from_id, node_name)
 
         # Handle telemetry packets from our own node
         if portnum == "TELEMETRY_APP" and from_id == self.my_node_id:
@@ -729,28 +736,25 @@ class ChatMonitor(App):
         # Wait a moment for the meshtastic library to update iface.nodes
         await asyncio.sleep(0.1)
         
+        # Get old name before fetching new one
+        old_name = self.known_nodes.get(from_id, {}).get("name", from_id)
+        
         # Get the friendly name (should be available now after NODEINFO)
         node_name = self.get_node_display_name(from_id, use_cache=False)
         
-        # Check if this was previously known only by ID
-        was_unknown = from_id not in self.known_nodes
-        previously_unnamed = (
-            from_id in self.known_nodes 
-            and self.known_nodes[from_id].get("name") == from_id
+        # Check if we're learning a new name (not just the node ID)
+        learning_new_name = (
+            node_name != from_id  # We got a real friendly name
+            and old_name == from_id  # Previously only had the ID
         )
-        
-        # Get old name before updating
-        old_name = self.known_nodes.get(from_id, {}).get("name")
         
         # Register/update the node
         self.register_node(from_id, node_name if node_name != from_id else None)
         
         # If we learned a new name for an existing node, update the message table
-        if previously_unnamed and node_name != from_id and old_name != node_name:
+        if learning_new_name:
             self._update_message_table_names(from_id, node_name)
-        
-        # Log discovery if new or if we just learned the name
-        if (was_unknown or previously_unnamed) and node_name != from_id:
+            # Log discovery when we learn the name
             self.log_node_discovery(from_id, node_name)
 
     def _update_message_table_names(self, node_id: str, new_name: str) -> None:
