@@ -78,6 +78,9 @@ class ChatMonitor(App):
         self.dest_input = None
         self.message_input = None
         self.current_input_step = None  # 'dest' or 'message'
+        self.reply_to_packet_id = None  # Track packet ID for replies
+        self.reply_to_from_id = None  # Track original sender for replies
+        self.reply_to_channel = None  # Track original channel/destination for replies
         self.known_nodes = {}  # Track nodes we've seen: {node_id: {name, last_seen}}
         self.current_preset = None  # Track current radio preset
         self.current_frequency_slot = None  # Track current frequency slot
@@ -154,7 +157,7 @@ class ChatMonitor(App):
         """Set up the app when mounted."""
         # Set up the table
         table = self.query_one("#messages-table", DataTable)
-        table.cursor_type = "none"
+        table.cursor_type = "row"  # Enable row cursor for clicking
         table.zebra_stripes = True
         self._setup_table_columns()
 
@@ -712,7 +715,10 @@ class ChatMonitor(App):
                 hop_start = packet.get("hopStart", hop_limit)
                 hops_taken = hop_start - hop_limit if hop_start >= hop_limit else 0
                 
-                self.log_message(msg_from_id, msg_to_id, message_content, is_reply=is_reply, hop_count=hops_taken)
+                # Get packet ID for reply support
+                packet_id = packet.get("id", 0)
+                
+                self.log_message(msg_from_id, msg_to_id, message_content, is_reply=is_reply, hop_count=hops_taken, packet_id=packet_id)
 
     async def _process_nodeinfo(self, from_id: str) -> None:
         """Process NODEINFO packet asynchronously to update node names.
@@ -774,7 +780,7 @@ class ChatMonitor(App):
         # Scroll to bottom
         table.scroll_end(animate=False)
 
-    def log_message(self, from_id: str, to_id: str, content: str, is_reply: bool = False, hop_count: int = 0):
+    def log_message(self, from_id: str, to_id: str, content: str, is_reply: bool = False, hop_count: int = 0, packet_id: int = 0):
         """Add a message to the table."""
         if not content or not content.strip():
             return
@@ -796,13 +802,16 @@ class ChatMonitor(App):
         if is_reply:
             content = "↩ " + content
 
-        # Store complete metadata (always preserve hop count)
+        # Store complete metadata (always preserve hop count and reply info)
         self.message_metadata.append({
             "timestamp": timestamp,
             "from": from_display,
             "to": to_display,
+            "from_id": from_id,  # Store raw node ID for replies
+            "to_id": to_id,  # Store raw destination for replies
             "hops": str(hop_count),
             "message": content,
+            "packet_id": packet_id,  # Store packet ID for replies
         })
 
         # Add row with or without hop count based on column visibility
@@ -834,8 +843,11 @@ class ChatMonitor(App):
             "timestamp": timestamp,
             "from": "[SYSTEM]",
             "to": "",
+            "from_id": "[SYSTEM]",
+            "to_id": "",
             "hops": "",
             "message": message,
+            "packet_id": 0,
         })
 
         # Add row with or without hop count based on column visibility
@@ -868,8 +880,11 @@ class ChatMonitor(App):
             "timestamp": timestamp,
             "from": "[NODE]",
             "to": node_id,
+            "from_id": "[NODE]",
+            "to_id": node_id,
             "hops": "",
             "message": message,
+            "packet_id": 0,
         })
         
         # Add row with or without hop count based on column visibility
@@ -954,6 +969,60 @@ class ChatMonitor(App):
         input_widget.placeholder = "Type your message..."
         input_widget.focus()
 
+    def start_reply_input(self, packet_id: int, original_from: str, original_to: str, original_from_display: str, original_message: str) -> None:
+        """Start reply input for a specific message.
+        
+        Args:
+            packet_id: The packet ID of the message to reply to
+            original_from: The raw node ID of the original sender
+            original_to: The raw destination (channel or node) of the original message
+            original_from_display: Display name of original sender
+            original_message: Content of the original message (for display)
+        """
+        if self.input_mode:
+            return
+
+        self.input_mode = True
+        self.current_input_step = "message"  # Skip destination step
+        
+        # Store reply context
+        self.reply_to_packet_id = packet_id
+        self.reply_to_from_id = original_from
+        self.reply_to_channel = original_to
+        
+        # Determine where to send the reply:
+        # - If original was to a channel (^all or starts with ^), reply to that channel
+        # - If original was a DM to us, reply directly to sender
+        # - If original was a DM from us, reply to original recipient
+        if original_to and original_to.startswith("^"):
+            # Reply to channel
+            self.dest_input = original_to
+            dest_display = original_to
+        elif original_to == self.my_node_id:
+            # Original was sent to us, reply directly to sender
+            self.dest_input = original_from
+            dest_display = original_from_display
+        else:
+            # Default: reply to the channel the message was on
+            self.dest_input = original_to
+            dest_display = self.get_node_display_name(original_to)
+
+        # Show input container
+        container = self.query_one("#input-container")
+        container.add_class("visible")
+
+        # Truncate message preview if too long
+        msg_preview = original_message[:50] + "..." if len(original_message) > 50 else original_message
+        
+        # Update label and focus input
+        label = self.query_one("#input-label", Static)
+        label.update(f"Reply to {original_from_display} → {dest_display}: \"{msg_preview}\"")
+
+        input_widget = self.query_one("#user-input", Input)
+        input_widget.value = ""
+        input_widget.placeholder = "Type your reply..."
+        input_widget.focus()
+
     @on(Input.Submitted, "#user-input")
     def handle_input_submit(self, event: Input.Submitted) -> None:
         """Handle input submission."""
@@ -979,9 +1048,13 @@ class ChatMonitor(App):
             self.message_input = value
 
             if self.message_input:
-                # Run async send in background
+                # Run async send in background (with reply ID if applicable)
                 self.run_worker(
-                    self.send_text_message(self.dest_input, self.message_input),
+                    self.send_text_message(
+                        self.dest_input, 
+                        self.message_input,
+                        reply_id=self.reply_to_packet_id
+                    ),
                     exclusive=False,
                 )
             else:
@@ -989,16 +1062,37 @@ class ChatMonitor(App):
 
             self.cancel_input()
 
-    async def send_text_message(self, dest: str, message: str) -> None:
-        """Send a text message."""
+    async def send_text_message(self, dest: str, message: str, reply_id: int = None) -> None:
+        """Send a text message, optionally as a reply.
+        
+        Args:
+            dest: Destination node ID or channel
+            message: Message content
+            reply_id: Optional packet ID to reply to
+        """
         try:
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                lambda: self.iface.sendText(message, destinationId=dest, wantAck=False),
-            )
+            
+            # Send with or without reply ID
+            if reply_id:
+                await loop.run_in_executor(
+                    None,
+                    lambda: self.iface.sendText(
+                        message, 
+                        destinationId=dest, 
+                        wantAck=False,
+                        replyId=reply_id
+                    ),
+                )
+            else:
+                await loop.run_in_executor(
+                    None,
+                    lambda: self.iface.sendText(message, destinationId=dest, wantAck=False),
+                )
+            
             # Log the sent message in the stream as if it was a regular message
-            self.log_message(self.my_node_id or "You", dest, message)
+            # Mark as reply if we're replying
+            self.log_message(self.my_node_id or "You", dest, message, is_reply=(reply_id is not None))
         except Exception as e:
             self.log_system(f"Failed to send: {e}", error=True)
 
@@ -1008,6 +1102,9 @@ class ChatMonitor(App):
         self.current_input_step = None
         self.dest_input = None
         self.message_input = None
+        self.reply_to_packet_id = None
+        self.reply_to_from_id = None
+        self.reply_to_channel = None
 
         # Hide input container
         container = self.query_one("#input-container")
@@ -1016,6 +1113,44 @@ class ChatMonitor(App):
         # Clear input
         input_widget = self.query_one("#user-input", Input)
         input_widget.value = ""
+
+    @on(DataTable.RowSelected, "#messages-table")
+    def on_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Handle double-click on a message row to reply."""
+        if not self.is_connected or self.input_mode:
+            return
+        
+        # Get the row index from the event
+        row_index = event.cursor_row
+        
+        # Make sure we have metadata for this row
+        if row_index >= len(self.message_metadata):
+            return
+        
+        msg_data = self.message_metadata[row_index]
+        
+        # Don't allow replying to system messages or discovery messages
+        if msg_data["from"] in ["[SYSTEM]", "[NODE]"]:
+            return
+        
+        # Don't allow replying to our own messages
+        if msg_data.get("from_id") == self.my_node_id:
+            return
+        
+        # Get packet ID - if not present, can't reply
+        packet_id = msg_data.get("packet_id", 0)
+        if not packet_id:
+            self.log_system("Cannot reply to this message (no packet ID)", error=True)
+            return
+        
+        # Start reply mode
+        self.start_reply_input(
+            packet_id=packet_id,
+            original_from=msg_data.get("from_id"),
+            original_to=msg_data.get("to_id"),
+            original_from_display=msg_data["from"],
+            original_message=msg_data["message"]
+        )
 
     def on_key(self, event) -> None:
         """Handle key events globally."""
