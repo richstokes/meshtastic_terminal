@@ -106,20 +106,24 @@ class NodeDetailScreen(ModalScreen):
         
         # Role and Configuration
         lines.append("═══ CONFIGURATION ═══")
-        role = user.get("role", "")
-        if role:
-            role_names = {
-                0: "CLIENT", 1: "CLIENT_MUTE", 2: "ROUTER", 3: "ROUTER_CLIENT",
-                4: "REPEATER", 5: "TRACKER", 6: "SENSOR", 7: "TAK",
-                8: "CLIENT_HIDDEN", 9: "LOST_AND_FOUND", 10: "TAK_TRACKER",
-            }
+        role = user.get("role", None)
+        if role is not None:
+            # Role is typically a string, but handle int for backwards compatibility
             if isinstance(role, int):
+                role_names = {
+                    0: "CLIENT", 1: "CLIENT_MUTE", 2: "ROUTER", 3: "ROUTER_CLIENT",
+                    4: "REPEATER", 5: "TRACKER", 6: "SENSOR", 7: "TAK",
+                    8: "CLIENT_HIDDEN", 9: "LOST_AND_FOUND", 10: "TAK_TRACKER",
+                    11: "ROUTER_LATE", 12: "CLIENT_BASE",
+                }
                 role = role_names.get(role, f"Unknown ({role})")
             elif hasattr(role, "name"):
                 role = role.name
+            # else role is already a string, use as-is
             lines.append(f"Role: {role}")
         else:
-            lines.append("Role: N/A")
+            # Default to CLIENT when role is not specified (most common default)
+            lines.append("Role: CLIENT (default)")
         
         # Public key
         public_key = user.get("publicKey")
