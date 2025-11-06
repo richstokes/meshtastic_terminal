@@ -173,7 +173,7 @@ class NodeListScreen(ModalScreen):
             
             # Role
             role = user.get("role", "")
-            if role:
+            if role is not None and role != "":
                 role_names = {
                     0: "CLIENT",
                     1: "CLIENT_MUTE",
