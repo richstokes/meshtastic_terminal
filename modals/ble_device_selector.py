@@ -1,6 +1,7 @@
 """BLE device selector modal screen for Meshtastic TUI."""
 
 import asyncio
+import re
 from textual.app import ComposeResult
 from textual.containers import Container
 from textual.widgets import Button, Label, ListItem, ListView, Static
@@ -32,12 +33,12 @@ class BleDeviceSelectorScreen(ModalScreen):
         with Container(id="ble-selector-dialog"):
             yield Label("Scanning for BLE devices...", id="ble-selector-title")
             yield Static("Press 'r' to rescan", id="ble-help-text")
-            
+
             # Create scrollable list view
             list_view = ListView(id="ble-list")
             list_view.can_focus = True
             yield list_view
-            
+
             # Add cancel button
             yield Button("Cancel", id="cancel-button", variant="default")
 
@@ -49,35 +50,40 @@ class BleDeviceSelectorScreen(ModalScreen):
         """Scan for BLE devices."""
         if self.is_scanning:
             return
-            
+
         self.is_scanning = True
         title = self.query_one("#ble-selector-title", Label)
         title.update("Scanning for BLE devices...")
-        
+
         # Clear previous results
         list_view = self.query_one("#ble-list", ListView)
         list_view.clear()
         self.device_list = []
         self.device_info = {}
-        
+
         try:
             # Scan for 10 seconds
             devices = await BleakScanner.discover(timeout=10.0)
-            
-            # Filter out devices without names and collect valid ones
+
+            # Pattern: 4 alphanumeric chars + underscore + 4 hex chars
+            # Example: Msh1_a3f2, TEST_AB12, etc.
+            name_pattern = re.compile(r"^[A-Za-z0-9]{4}_[A-Fa-f0-9]{4}$")
+
+            # Filter devices to only include those matching the pattern
             for device in devices:
-                # Only include devices with a name
+                # Only include devices with a name matching the pattern
                 if device.address and device.name and device.name.strip():
-                    self.device_list.append(device)
-                    self.device_info[device.address] = device
-            
+                    if name_pattern.match(device.name.strip()):
+                        self.device_list.append(device)
+                        self.device_info[device.address] = device
+
             # Sort by signal strength (RSSI) - strongest first (higher RSSI = better signal)
-            self.device_list.sort(key=lambda d: getattr(d, 'rssi', -999), reverse=True)
-            
+            self.device_list.sort(key=lambda d: getattr(d, "rssi", -999), reverse=True)
+
             # Update title with results
             if self.device_list:
                 title.update(f"Found {len(self.device_list)} BLE device(s)")
-                
+
                 # Populate list
                 for idx, device in enumerate(self.device_list):
                     # Create informative label
@@ -85,22 +91,24 @@ class BleDeviceSelectorScreen(ModalScreen):
                         label_text = f"{device.name} ({device.address})"
                     else:
                         label_text = f"Unknown Device ({device.address})"
-                    
+
                     # Show signal strength if available
-                    if hasattr(device, 'rssi') and device.rssi:
+                    if hasattr(device, "rssi") and device.rssi:
                         label_text += f" [RSSI: {device.rssi}]"
-                    
+
                     list_view.append(ListItem(Label(label_text), id=f"ble_{idx}"))
-                
+
                 # Focus the list view
                 self.set_focus(list_view)
             else:
                 title.update("No BLE devices found")
-                list_view.append(ListItem(Label("No devices detected. Press 'r' to rescan.")))
-        
+                list_view.append(
+                    ListItem(Label("No devices detected. Press 'r' to rescan."))
+                )
+
         except Exception as e:
             title.update(f"Scan error: {e}")
-        
+
         finally:
             self.is_scanning = False
 
@@ -124,7 +132,7 @@ class BleDeviceSelectorScreen(ModalScreen):
         if not self.device_list:
             self.dismiss(False)
             return
-            
+
         list_view = self.query_one("#ble-list", ListView)
         if list_view.highlighted_child and list_view.highlighted_child.id:
             if list_view.highlighted_child.id.startswith("ble_"):
